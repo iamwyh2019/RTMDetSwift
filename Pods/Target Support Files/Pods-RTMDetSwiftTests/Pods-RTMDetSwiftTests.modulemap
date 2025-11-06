@@ -1,0 +1,6 @@
+framework module Pods_RTMDetSwiftTests {
+  umbrella header "Pods-RTMDetSwiftTests-umbrella.h"
+
+  export *
+  module * { export * }
+}
