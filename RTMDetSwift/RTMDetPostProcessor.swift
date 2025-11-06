@@ -146,23 +146,25 @@ public class RTMDetPostProcessor {
             }
         }
 
-        // Apply NMS with optimized IoU calculation
-        let finalDetections = applyNMSOptimized(detections: detections, iouThreshold: iouThreshold)
+        // Apply NMS with optimized IoU calculation (matches YOLOUnity approach)
+        let finalDetections = applyNMSOptimized(detections: detections, iouThreshold: iouThreshold, limit: 20)
 
         return finalDetections
     }
 
-    /// Optimized NMS using vectorized IoU calculations
-    private func applyNMSOptimized(detections: [Detection], iouThreshold: Float) -> [Detection] {
+    /// Optimized NMS using early exit strategy (matches YOLOUnity implementation)
+    private func applyNMSOptimized(detections: [Detection], iouThreshold: Float, limit: Int) -> [Detection] {
         guard !detections.isEmpty else { return [] }
 
         // Sort by confidence (highest first)
         let sortedIndices = detections.indices.sorted { detections[$0].confidence > detections[$1].confidence }
 
         var keep: [Detection] = []
-        keep.reserveCapacity(detections.count)
-        var suppressed = Set<Int>()
-        suppressed.reserveCapacity(detections.count)
+        keep.reserveCapacity(min(limit, detections.count))
+
+        // Use Bool array instead of Set for faster access (YOLOUnity optimization)
+        var active = [Bool](repeating: true, count: detections.count)
+        var numActive = detections.count
 
         // Precompute box areas for all detections
         var areas = [Float](repeating: 0, count: detections.count)
@@ -171,12 +173,16 @@ public class RTMDetPostProcessor {
             areas[i] = (box.x2 - box.x1) * (box.y2 - box.y1)
         }
 
-        for i in 0..<sortedIndices.count {
+        // Use labeled loop for early exit (YOLOUnity pattern)
+        outer: for i in 0..<sortedIndices.count {
             let idx = sortedIndices[i]
-            if suppressed.contains(idx) { continue }
+            guard active[idx] else { continue }
 
             let current = detections[idx]
             keep.append(current)
+
+            // Early exit if limit reached (YOLOUnity optimization)
+            if keep.count >= limit { break }
 
             // Vectorized IoU computation for remaining boxes
             let currentBox = current.bbox
@@ -184,7 +190,7 @@ public class RTMDetPostProcessor {
 
             for j in (i + 1)..<sortedIndices.count {
                 let jdx = sortedIndices[j]
-                if suppressed.contains(jdx) { continue }
+                guard active[jdx] else { continue }
 
                 let other = detections[jdx]
 
@@ -192,7 +198,7 @@ public class RTMDetPostProcessor {
                 if current.classId == other.classId {
                     let otherBox = other.bbox
 
-                    // Calculate intersection (manually for now, can be vectorized further)
+                    // Calculate intersection
                     let x1 = max(currentBox.x1, otherBox.x1)
                     let y1 = max(currentBox.y1, otherBox.y1)
                     let x2 = min(currentBox.x2, otherBox.x2)
@@ -204,7 +210,11 @@ public class RTMDetPostProcessor {
                     let iou = unionArea > 0 ? intersectionArea / unionArea : 0
 
                     if iou > iouThreshold {
-                        suppressed.insert(jdx)
+                        active[jdx] = false
+                        numActive -= 1
+
+                        // Early exit if no more active boxes (YOLOUnity optimization)
+                        if numActive <= 0 { break outer }
                     }
                 }
             }
