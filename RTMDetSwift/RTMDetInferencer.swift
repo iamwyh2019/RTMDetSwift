@@ -26,6 +26,13 @@ public class RTMDetInferencer {
             // Create session options
             let options = try ORTSessionOptions()
 
+            // Enable CoreML for Neural Engine acceleration
+            let coreMLOptions = ORTCoreMLExecutionProviderOptions()
+            coreMLOptions.useCPUOnly = false  // Use Neural Engine
+            coreMLOptions.enableOnSubgraphs = true
+            coreMLOptions.onlyEnableForDevicesWithANE = false  // Allow all devices
+            try options.appendCoreMLExecutionProvider(with: coreMLOptions)
+
             // Create session
             session = try ORTSession(env: env!, modelPath: modelPath, sessionOptions: options)
 
@@ -156,6 +163,28 @@ public class RTMDetInferencer {
             return outputs
         } catch {
             print("Inference failed: \(error)")
+            return nil
+        }
+    }
+
+    /// Run inference and post-processing in one call
+    /// - Parameters:
+    ///   - image: Input image
+    ///   - confidenceThreshold: Confidence threshold for detections
+    ///   - iouThreshold: IoU threshold for NMS
+    /// - Returns: Array of Detection objects
+    public func detect(image: UIImage, confidenceThreshold: Float = 0.5, iouThreshold: Float = 0.5) -> [Detection]? {
+        guard let outputs = infer(image: image) else {
+            return nil
+        }
+
+        let postProcessor = RTMDetPostProcessor(confidenceThreshold: confidenceThreshold, iouThreshold: iouThreshold)
+
+        do {
+            let detections = try postProcessor.process(outputs: outputs)
+            return detections
+        } catch {
+            print("Post-processing failed: \(error)")
             return nil
         }
     }

@@ -12,6 +12,7 @@ import onnxruntime_objc
 
 struct RTMDetSwiftTests {
 
+    /* Commented out raw inference test - keeping detection test only
     @Test func testRawInference() async throws {
         // Get the model path from the framework bundle
         let frameworkBundle = Bundle(for: RTMDetInferencer.self)
@@ -103,6 +104,74 @@ struct RTMDetSwiftTests {
                     print("  First \(floatCount) values: \(floatArray)")
                 }
             }
+        }
+
+        print("\n=== Test completed successfully ===")
+    } */
+
+    @Test func testDetection() async throws {
+        // Get the model path from the framework bundle
+        let frameworkBundle = Bundle(for: RTMDetInferencer.self)
+        guard let modelPath = frameworkBundle.path(forResource: "rtmdet-m", ofType: "onnx") else {
+            print("Model file not found in framework bundle")
+            throw NSError(domain: "RTMDetSwiftTests", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Model file not found"])
+        }
+
+        // Initialize inferencer
+        guard let inferencer = RTMDetInferencer(modelPath: modelPath, inputWidth: 640, inputHeight: 640) else {
+            throw NSError(domain: "RTMDetSwiftTests", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Failed to initialize inferencer"])
+        }
+
+        print("Inferencer initialized successfully")
+
+        // Load demo image
+        var imagePath: String?
+        for bundle in Bundle.allBundles {
+            if let path = bundle.path(forResource: "demo", ofType: "jpg") {
+                imagePath = path
+                break
+            }
+        }
+
+        if imagePath == nil {
+            let testBundlePath = Bundle.main.bundlePath
+            let directPath = testBundlePath + "/demo.jpg"
+            if FileManager.default.fileExists(atPath: directPath) {
+                imagePath = directPath
+            }
+        }
+
+        guard let finalPath = imagePath else {
+            throw NSError(domain: "RTMDetSwiftTests", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Demo image not found"])
+        }
+
+        guard let image = UIImage(contentsOfFile: finalPath) else {
+            throw NSError(domain: "RTMDetSwiftTests", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Failed to load image"])
+        }
+
+        print("Loaded demo image: \(image.size.width)x\(image.size.height)")
+
+        // Run detection with post-processing
+        print("\nRunning detection with post-processing...")
+        guard let detections = inferencer.detect(image: image, confidenceThreshold: 0.5, iouThreshold: 0.5) else {
+            throw NSError(domain: "RTMDetSwiftTests", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Detection failed"])
+        }
+
+        // Print results
+        print("\n=== Detection Results ===")
+        print("Found \(detections.count) objects:")
+
+        for (index, detection) in detections.enumerated() {
+            let className = COCO_LABELS[detection.classId] ?? "unknown"
+            print("\nDetection \(index + 1):")
+            print("  Class: \(className) (ID: \(detection.classId))")
+            print("  Confidence: \(String(format: "%.2f%%", detection.confidence * 100))")
+            print("  Bounding Box: [\(String(format: "%.1f", detection.bbox.x1)), \(String(format: "%.1f", detection.bbox.y1)), \(String(format: "%.1f", detection.bbox.x2)), \(String(format: "%.1f", detection.bbox.y2))]")
         }
 
         print("\n=== Test completed successfully ===")
