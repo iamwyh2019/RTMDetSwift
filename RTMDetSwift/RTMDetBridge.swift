@@ -8,10 +8,11 @@
 import Foundation
 import UIKit
 
-// Callback type - matches YOLOUnity but WITHOUT class names (only IDs)
+// Callback type - matches YOLOUnity signature for Unity compatibility
 public typealias RTMDetCallback = @convention(c) (
     Int32,                          // number of detections
     UnsafePointer<Int32>,           // classIndex (length = numDetections)
+    UnsafePointer<UInt8>, Int32,    // names data, names length (UNUSED - always empty for RTMDet)
     UnsafePointer<Float>,           // scores (length = numDetections)
     UnsafePointer<Int32>,           // boxes (length = numDetections * 4)
     UnsafePointer<Int32>, Int32,    // contour points, count
@@ -186,25 +187,35 @@ private func runDetection(
                 return [x, y]
             }
 
+            // Empty name data for Unity signature compatibility
+            // RTMDet returns class IDs only - Unity should use a lookup table for names
+            let emptyNames: [UInt8] = []
+
             // Call the callback with all the data
             classIndices.withUnsafeBufferPointer { classPtr in
-                scores.withUnsafeBufferPointer { scoresPtr in
-                    boxes.withUnsafeBufferPointer { boxesPtr in
-                        contourPoints.withUnsafeBufferPointer { pointsPtr in
-                            contourIndices.withUnsafeBufferPointer { indicesPtr in
-                                centroids.withUnsafeBufferPointer { centroidPtr in
-                                    callback(
-                                        Int32(detections.count),
-                                        classPtr.baseAddress!,
-                                        scoresPtr.baseAddress!,
-                                        boxesPtr.baseAddress!,
-                                        pointsPtr.baseAddress!,
-                                        Int32(contourPoints.count),
-                                        indicesPtr.baseAddress!,
-                                        Int32(contourIndices.count),
-                                        centroidPtr.baseAddress!,
-                                        ts
-                                    )
+                emptyNames.withUnsafeBufferPointer { namesPtr in
+                    scores.withUnsafeBufferPointer { scoresPtr in
+                        boxes.withUnsafeBufferPointer { boxesPtr in
+                            contourPoints.withUnsafeBufferPointer { pointsPtr in
+                                contourIndices.withUnsafeBufferPointer { indicesPtr in
+                                    centroids.withUnsafeBufferPointer { centroidPtr in
+                                        // Pass empty pointer for names to maintain Unity compatibility
+                                        let namesPointer = namesPtr.baseAddress ?? UnsafePointer<UInt8>(bitPattern: 1)!
+                                        callback(
+                                            Int32(detections.count),
+                                            classPtr.baseAddress!,
+                                            namesPointer,
+                                            Int32(0),  // names length = 0
+                                            scoresPtr.baseAddress!,
+                                            boxesPtr.baseAddress!,
+                                            pointsPtr.baseAddress!,
+                                            Int32(contourPoints.count),
+                                            indicesPtr.baseAddress!,
+                                            Int32(contourIndices.count),
+                                            centroidPtr.baseAddress!,
+                                            ts
+                                        )
+                                    }
                                 }
                             }
                         }

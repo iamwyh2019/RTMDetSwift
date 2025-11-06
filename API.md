@@ -13,7 +13,9 @@ The API uses a callback-based pattern where you:
 ## Key Differences from YOLOUnity
 
 - **No class names**: RTMDetSwift returns only class IDs (integers), not class name strings
-- **Same callback signature**: Except for the removal of `namesData` and `namesBytes` parameters
+  - `namesData` is always empty pointer, `namesLength` is always 0
+  - Use a lookup table in Unity to convert class IDs to names
+- **Same callback signature**: Fully compatible with YOLOUnity Unity delegate
 - **Same coordinate system**: All coordinates are returned in the **original image space**
 - **Same image format**: RGBA interleaved with Y-axis flip for Unity compatibility
 
@@ -32,6 +34,8 @@ void RegisterRTMDetCallback(RTMDetCallback callback);
 typedef void (*RTMDetCallback)(
     int32_t numDetections,          // Number of detections
     const int32_t* classIndices,    // Class IDs [numDetections]
+    const uint8_t* namesData,       // UNUSED - always empty (for YOLOUnity compatibility)
+    int32_t namesLength,            // UNUSED - always 0 (for YOLOUnity compatibility)
     const float* scores,            // Confidence scores [numDetections]
     const int32_t* boxes,           // Bounding boxes [numDetections * 4] as [x1,y1,x2,y2,...]
     const int32_t* contourPoints,   // Flattened contour points [contourPointsCount]
@@ -42,6 +46,8 @@ typedef void (*RTMDetCallback)(
     uint64_t timestamp              // Timestamp in milliseconds
 );
 ```
+
+**Note**: The `namesData` and `namesLength` parameters are **unused** and kept only for Unity/YOLOUnity signature compatibility. RTMDet returns class IDs only - use a lookup table in Unity to get class names from IDs.
 
 **Coordinate System:**
 - All coordinates (boxes, contours, centroids) are in **original image space**
@@ -144,10 +150,12 @@ void RunRTMDet_Byte(
 ```c
 #include <RTMDetSwift/RTMDetSwift.h>
 
-// Callback to handle results
+// Callback to handle results - matches YOLOUnity signature
 void OnDetection(
     int32_t numDetections,
     const int32_t* classIndices,
+    const uint8_t* namesData,       // UNUSED - always empty
+    int32_t namesLength,            // UNUSED - always 0
     const float* scores,
     const int32_t* boxes,
     const int32_t* contourPoints,
@@ -158,11 +166,12 @@ void OnDetection(
     uint64_t timestamp
 ) {
     printf("Detected %d objects\n", numDetections);
+    // Note: namesLength will always be 0 - use classIndices with your own lookup table
 
     for (int i = 0; i < numDetections; i++) {
         printf("Object %d: class=%d, score=%.2f, bbox=[%d,%d,%d,%d], centroid=[%d,%d]\n",
             i,
-            classIndices[i],
+            classIndices[i],  // Use this ID with your class name lookup table
             scores[i],
             boxes[i*4], boxes[i*4+1], boxes[i*4+2], boxes[i*4+3],
             centroids[i*2], centroids[i*2+1]
