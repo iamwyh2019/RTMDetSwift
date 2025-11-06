@@ -215,22 +215,35 @@ private func runDetection(
 
 // Convert float array (RGBA interleaved, 0-1 range) to UIImage
 // Matches YOLOUnity format: data is [r,g,b,a,r,g,b,a,...] with Y-flip
+// Optimized with parallel processing like YOLOUnity
 private func floatArrayToUIImage(data: UnsafePointer<Float>, width: Int, height: Int) -> UIImage? {
     let bytesPerPixel = 4
     let byteCount = width * height * bytesPerPixel
     var pixels = [UInt8](repeating: 0, count: byteCount)
 
-    // Process with Y-flip (Unity coordinate system)
-    for y in 0..<height {
-        let sourceY = height - 1 - y  // Flip Y axis
-        for x in 0..<width {
-            let sourceIndex = (sourceY * width + x) * 4
-            let destIndex = (y * width + x) * 4
+    let width4 = width * 4
+    let lookup = (0...255).map { UInt8($0) }  // Pre-calculate UInt8 conversions (YOLOUnity optimization)
 
-            pixels[destIndex + 0] = UInt8(max(0, min(255, data[sourceIndex + 0] * 255)))
-            pixels[destIndex + 1] = UInt8(max(0, min(255, data[sourceIndex + 1] * 255)))
-            pixels[destIndex + 2] = UInt8(max(0, min(255, data[sourceIndex + 2] * 255)))
-            pixels[destIndex + 3] = UInt8(max(0, min(255, data[sourceIndex + 3] * 255)))
+    // Parallel processing across rows (matches YOLOUnity approach)
+    DispatchQueue.concurrentPerform(iterations: height) { y in
+        let sourceY = height - 1 - y  // Flip Y axis
+        let sourceStart = sourceY * width4
+        let destStart = y * width4
+
+        for x in stride(from: 0, to: width4, by: 4) {
+            let sourceIndex = sourceStart + x
+            let destIndex = destStart + x
+
+            // Use lookup table for faster conversion (YOLOUnity technique)
+            let r = Int(data[sourceIndex] * 255.0)
+            let g = Int(data[sourceIndex + 1] * 255.0)
+            let b = Int(data[sourceIndex + 2] * 255.0)
+            let a = Int(data[sourceIndex + 3] * 255.0)
+
+            pixels[destIndex] = lookup[max(0, min(255, r))]
+            pixels[destIndex + 1] = lookup[max(0, min(255, g))]
+            pixels[destIndex + 2] = lookup[max(0, min(255, b))]
+            pixels[destIndex + 3] = lookup[max(0, min(255, a))]
         }
     }
 
@@ -239,19 +252,22 @@ private func floatArrayToUIImage(data: UnsafePointer<Float>, width: Int, height:
 
 // Convert byte array (RGBA interleaved) to UIImage
 // Matches YOLOUnity format: data is [r,g,b,a,r,g,b,a,...] with Y-flip
+// Optimized with parallel processing and memcpy like YOLOUnity
 private func byteArrayToUIImage(data: UnsafePointer<UInt8>, width: Int, height: Int) -> UIImage? {
     let bytesPerPixel = 4
     let byteCount = width * height * bytesPerPixel
     var pixels = [UInt8](repeating: 0, count: byteCount)
 
-    // Process with Y-flip (Unity coordinate system)
-    for y in 0..<height {
-        let sourceY = height - 1 - y  // Flip Y axis
-        let sourceStart = sourceY * width * bytesPerPixel
-        let destStart = y * width * bytesPerPixel
+    let rowBytes = width * bytesPerPixel
 
-        // Copy row with memcpy for efficiency
-        memcpy(&pixels[destStart], data + sourceStart, width * bytesPerPixel)
+    // Parallel processing across rows with memcpy (matches YOLOUnity approach)
+    DispatchQueue.concurrentPerform(iterations: height) { y in
+        let sourceY = height - 1 - y  // Flip Y axis
+        let sourceStart = sourceY * rowBytes
+        let destStart = y * rowBytes
+
+        // Direct memory copy for each row (fastest method)
+        memcpy(&pixels[destStart], data + sourceStart, rowBytes)
     }
 
     return createUIImage(from: pixels, width: width, height: height)
