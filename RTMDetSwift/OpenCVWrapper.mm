@@ -37,11 +37,11 @@
             float32x4_t v3 = vld1q_f32(srcRow + x + 8);
             float32x4_t v4 = vld1q_f32(srcRow + x + 12);
             
-            // Compare with 0 and convert to 8-bit
-            uint32x4_t mask1 = vcgtq_f32(v1, vdupq_n_f32(0));
-            uint32x4_t mask2 = vcgtq_f32(v2, vdupq_n_f32(0));
-            uint32x4_t mask3 = vcgtq_f32(v3, vdupq_n_f32(0));
-            uint32x4_t mask4 = vcgtq_f32(v4, vdupq_n_f32(0));
+            // Compare with 0.5 and convert to 8-bit
+            uint32x4_t mask1 = vcgtq_f32(v1, vdupq_n_f32(0.5));
+            uint32x4_t mask2 = vcgtq_f32(v2, vdupq_n_f32(0.5));
+            uint32x4_t mask3 = vcgtq_f32(v3, vdupq_n_f32(0.5));
+            uint32x4_t mask4 = vcgtq_f32(v4, vdupq_n_f32(0.5));
             
             // Combine results
             uint8x8_t narrow1 = vmovn_u16(vcombine_u16(vmovn_u32(mask1), vmovn_u32(mask2)));
@@ -55,7 +55,7 @@
         
         // Handle remaining pixels
         for (; x < width; x++) {
-            dstRow[x] = srcRow[x] > 0 ? 255 : 0;
+            dstRow[x] = srcRow[x] > 0.5 ? 255 : 0;
         }
     });
     #else
@@ -63,9 +63,9 @@
     dispatch_apply(height, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^(size_t y) {
         const float* srcRow = mask + y * width;
         uint8_t* dstRow = matData + y * width;
-        
+
         for(int x = 0; x < width; x++) {
-            dstRow[x] = srcRow[x] > 0 ? 255 : 0;
+            dstRow[x] = srcRow[x] > 0.5 ? 255 : 0;
         }
     });
     #endif

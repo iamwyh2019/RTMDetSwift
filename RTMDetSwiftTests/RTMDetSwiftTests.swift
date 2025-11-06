@@ -212,6 +212,8 @@ struct RTMDetSwiftTests {
         }
 
         // Scale factor to convert from 640x640 to original image size
+        // Note: Input image is stretched (not letterboxed) to 640x640 for inference,
+        // so we use different scale factors for X and Y to reverse the stretching
         let scaleX = image.size.width / 640.0
         let scaleY = image.size.height / 640.0
 

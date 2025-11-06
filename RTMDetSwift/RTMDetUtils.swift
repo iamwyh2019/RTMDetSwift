@@ -13,10 +13,10 @@ public typealias BoundingBox = (x1: Float, y1: Float, x2: Float, y2: Float)
 public struct Detection {
     public let classId: Int
     public let confidence: Float
-    public let bbox: BoundingBox
-    public let mask: [Float]          // 640x640 segmentation mask
-    public let contours: [[Float]]    // Array of contours, each contour is [x1,y1,x2,y2,...]
-    public let centroid: (Float, Float) // Mask centroid (x, y)
+    public let bbox: BoundingBox        // Bounding box in 640x640 coordinate space
+    public let mask: [Float]            // 640x640 segmentation mask (values in [0,1])
+    public let contours: [[Float]]      // Array of contours in 640x640 space, each contour is [x1,y1,x2,y2,...]
+    public let centroid: (Float, Float) // Mask centroid (x, y) in 640x640 space
 
     public init(classId: Int, confidence: Float, bbox: BoundingBox, mask: [Float], contours: [[Float]], centroid: (Float, Float)) {
         self.classId = classId
