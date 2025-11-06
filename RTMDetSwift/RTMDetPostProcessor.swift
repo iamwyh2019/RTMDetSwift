@@ -11,17 +11,18 @@ import Accelerate
 
 public class RTMDetPostProcessor {
     private let confidenceThreshold: Float
-    private let iouThreshold: Float
+    private let iouThreshold: Float  // Unused - RTMDet has built-in NMS
 
     public init(confidenceThreshold: Float = 0.5, iouThreshold: Float = 0.5) {
         self.confidenceThreshold = confidenceThreshold
-        self.iouThreshold = iouThreshold
+        self.iouThreshold = iouThreshold  // Kept for API compatibility but unused
     }
 
     /// Post-process RTMDet outputs with SIMD optimization
     /// - Parameters:
     ///   - outputs: Dictionary of output names to ORTValue
-    /// - Returns: Array of Detection objects after NMS
+    /// - Returns: Array of Detection objects after confidence filtering
+    /// - Note: RTMDet model has built-in NMS, so no additional NMS is applied
     public func process(outputs: [String: ORTValue]) throws -> [Detection] {
         // RTMDet outputs by name:
         // "labels": [1, 100] - INT64 class IDs
@@ -146,83 +147,8 @@ public class RTMDetPostProcessor {
             }
         }
 
-        // Apply NMS as refinement step (model already has built-in NMS)
-        // RTMDet outputs max 100 detections, so limit to 100 to avoid discarding valid results
-        let finalDetections = applyNMSOptimized(detections: detections, iouThreshold: iouThreshold, limit: 100)
-
-        return finalDetections
-    }
-
-    /// Optimized NMS using early exit strategy
-    /// Note: RTMDet model already applies NMS internally (outputs max 100 boxes)
-    /// This is a refinement pass to remove any remaining overlaps after confidence filtering
-    private func applyNMSOptimized(detections: [Detection], iouThreshold: Float, limit: Int) -> [Detection] {
-        guard !detections.isEmpty else { return [] }
-
-        // Sort by confidence (highest first)
-        let sortedIndices = detections.indices.sorted { detections[$0].confidence > detections[$1].confidence }
-
-        var keep: [Detection] = []
-        keep.reserveCapacity(min(limit, detections.count))
-
-        // Use Bool array instead of Set for faster access (YOLOUnity optimization)
-        var active = [Bool](repeating: true, count: detections.count)
-        var numActive = detections.count
-
-        // Precompute box areas for all detections
-        var areas = [Float](repeating: 0, count: detections.count)
-        for i in 0..<detections.count {
-            let box = detections[i].bbox
-            areas[i] = (box.x2 - box.x1) * (box.y2 - box.y1)
-        }
-
-        // Use labeled loop for early exit (YOLOUnity pattern)
-        outer: for i in 0..<sortedIndices.count {
-            let idx = sortedIndices[i]
-            guard active[idx] else { continue }
-
-            let current = detections[idx]
-            keep.append(current)
-
-            // Early exit if limit reached (YOLOUnity optimization)
-            if keep.count >= limit { break }
-
-            // Vectorized IoU computation for remaining boxes
-            let currentBox = current.bbox
-            let currentArea = areas[idx]
-
-            for j in (i + 1)..<sortedIndices.count {
-                let jdx = sortedIndices[j]
-                guard active[jdx] else { continue }
-
-                let other = detections[jdx]
-
-                // Only apply NMS within the same class
-                if current.classId == other.classId {
-                    let otherBox = other.bbox
-
-                    // Calculate intersection
-                    let x1 = max(currentBox.x1, otherBox.x1)
-                    let y1 = max(currentBox.y1, otherBox.y1)
-                    let x2 = min(currentBox.x2, otherBox.x2)
-                    let y2 = min(currentBox.y2, otherBox.y2)
-
-                    let intersectionArea = max(0, x2 - x1) * max(0, y2 - y1)
-                    let unionArea = currentArea + areas[jdx] - intersectionArea
-
-                    let iou = unionArea > 0 ? intersectionArea / unionArea : 0
-
-                    if iou > iouThreshold {
-                        active[jdx] = false
-                        numActive -= 1
-
-                        // Early exit if no more active boxes (YOLOUnity optimization)
-                        if numActive <= 0 { break outer }
-                    }
-                }
-            }
-        }
-
-        return keep
+        // RTMDet model has built-in NMS, so we just return filtered detections
+        // No additional NMS needed - confidence filtering doesn't create new overlaps
+        return detections
     }
 }

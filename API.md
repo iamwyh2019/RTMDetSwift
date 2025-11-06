@@ -79,15 +79,18 @@ Initialize the RTMDet model from an ONNX file.
 bool InitializeRTMDet(
     const char* modelPath,          // Full path to .onnx model file
     float confidenceThreshold,      // Confidence threshold (e.g., 0.5)
-    float iouThreshold              // IoU threshold for NMS (e.g., 0.5)
+    float iouThreshold              // IoU threshold - IGNORED (kept for API compatibility)
 );
 ```
 
 **Returns:** `true` if initialization succeeded, `false` otherwise.
 
+**Note**: The `iouThreshold` parameter is **ignored** because RTMDet has built-in NMS in the ONNX model. It's kept for API compatibility with YOLOUnity.
+
 **Example:**
 ```c
 bool success = InitializeRTMDet("/path/to/rtmdet-m.onnx", 0.5, 0.5);
+// Note: The second 0.5 (iouThreshold) is ignored - RTMDet uses built-in NMS
 ```
 
 ### 3. RunRTMDet
@@ -217,3 +220,4 @@ See `RTMDetSwift/COCO_LABELS.swift` for the complete mapping.
 - The model uses CoreML with Neural Engine acceleration
 - Mask processing uses SIMD optimization (NEON on ARM)
 - Y-flip conversion adds overhead; pre-flip images if possible
+- **No NMS overhead**: RTMDet has built-in NMS, so no additional processing needed
