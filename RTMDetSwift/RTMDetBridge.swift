@@ -48,16 +48,27 @@ public func InitializeRTMDet(
         // Already a full path
         fullPath = pathOrName.replacingOccurrences(of: "file://", with: "")
     } else {
-        // Model name - look in main bundle
+        // Model name - look in framework bundle first, then main bundle
         let modelName = pathOrName.replacingOccurrences(of: ".onnx", with: "")
 
-        if let bundlePath = Bundle.main.path(forResource: modelName, ofType: "onnx") {
+        // Get the framework bundle (RTMDetSwift.framework)
+        let frameworkBundle = Bundle(for: RTMDetInferencer.self)
+
+        // Try framework bundle first (where the model actually is)
+        if let bundlePath = frameworkBundle.path(forResource: modelName, ofType: "onnx") {
             fullPath = bundlePath
-            NSLog("Found model in bundle: \(bundlePath)")
+            NSLog("Found model in framework bundle: \(bundlePath)")
+        } else if let bundlePath = frameworkBundle.path(forResource: modelName, ofType: "mlpackage") {
+            fullPath = bundlePath
+            NSLog("Found model in framework bundle: \(bundlePath)")
+        }
+        // Then try main app bundle
+        else if let bundlePath = Bundle.main.path(forResource: modelName, ofType: "onnx") {
+            fullPath = bundlePath
+            NSLog("Found model in main bundle: \(bundlePath)")
         } else if let bundlePath = Bundle.main.path(forResource: modelName, ofType: "mlpackage") {
-            // Also check for .mlpackage (CoreML format)
             fullPath = bundlePath
-            NSLog("Found model in bundle: \(bundlePath)")
+            NSLog("Found model in main bundle: \(bundlePath)")
         } else {
             // Try looking in Documents directory
             let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
@@ -68,7 +79,8 @@ public func InitializeRTMDet(
                 NSLog("Found model in Documents: \(documentsModelPath)")
             } else {
                 NSLog("Error: Model not found. Tried:")
-                NSLog("  - Bundle: \(modelName).onnx")
+                NSLog("  - Framework bundle (\(frameworkBundle.bundlePath)): \(modelName).onnx")
+                NSLog("  - Main bundle: \(modelName).onnx")
                 NSLog("  - Documents: \(documentsModelPath)")
                 return false
             }
