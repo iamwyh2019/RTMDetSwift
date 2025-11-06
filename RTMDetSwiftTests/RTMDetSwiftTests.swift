@@ -200,6 +200,93 @@ struct RTMDetSwiftTests {
             }
         }
 
+        // Draw detections on image
+        print("\n=== Generating output image ===")
+        UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
+        image.draw(at: .zero)
+
+        guard let context = UIGraphicsGetCurrentContext() else {
+            print("Failed to get graphics context")
+            UIGraphicsEndImageContext()
+            return
+        }
+
+        // Scale factor to convert from 640x640 to original image size
+        let scaleX = image.size.width / 640.0
+        let scaleY = image.size.height / 640.0
+
+        for detection in detections {
+            let className = COCO_LABELS[detection.classId] ?? "unknown"
+
+            // Random color for this detection
+            let hue = CGFloat(detection.classId % 20) / 20.0
+            let color = UIColor(hue: hue, saturation: 0.8, brightness: 0.9, alpha: 1.0)
+
+            // Draw bounding box
+            context.setStrokeColor(color.cgColor)
+            context.setLineWidth(3.0)
+            let bbox = CGRect(
+                x: CGFloat(detection.bbox.x1) * scaleX,
+                y: CGFloat(detection.bbox.y1) * scaleY,
+                width: CGFloat(detection.bbox.x2 - detection.bbox.x1) * scaleX,
+                height: CGFloat(detection.bbox.y2 - detection.bbox.y1) * scaleY
+            )
+            context.stroke(bbox)
+
+            // Draw contours
+            context.setStrokeColor(color.withAlphaComponent(0.7).cgColor)
+            context.setLineWidth(2.0)
+            for contour in detection.contours {
+                guard contour.count >= 4 else { continue }
+
+                context.beginPath()
+                let firstX = CGFloat(contour[0]) * scaleX
+                let firstY = CGFloat(contour[1]) * scaleY
+                context.move(to: CGPoint(x: firstX, y: firstY))
+
+                for i in stride(from: 2, to: contour.count, by: 2) {
+                    let x = CGFloat(contour[i]) * scaleX
+                    let y = CGFloat(contour[i + 1]) * scaleY
+                    context.addLine(to: CGPoint(x: x, y: y))
+                }
+                context.closePath()
+                context.strokePath()
+            }
+
+            // Draw centroid
+            let centroidX = CGFloat(detection.centroid.0) * scaleX
+            let centroidY = CGFloat(detection.centroid.1) * scaleY
+            context.setFillColor(color.cgColor)
+            context.fillEllipse(in: CGRect(x: centroidX - 5, y: centroidY - 5, width: 10, height: 10))
+
+            // Draw label
+            let label = "\(className) \(String(format: "%.0f%%", detection.confidence * 100))"
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 16),
+                .foregroundColor: UIColor.white,
+                .backgroundColor: color
+            ]
+            let labelSize = (label as NSString).size(withAttributes: attrs)
+            (label as NSString).draw(
+                at: CGPoint(x: CGFloat(detection.bbox.x1) * scaleX, y: CGFloat(detection.bbox.y1) * scaleY - labelSize.height - 2),
+                withAttributes: attrs
+            )
+        }
+
+        guard let outputImage = UIGraphicsGetImageFromCurrentImageContext() else {
+            print("Failed to create output image")
+            UIGraphicsEndImageContext()
+            return
+        }
+        UIGraphicsEndImageContext()
+
+        // Save to file
+        if let imageData = outputImage.pngData() {
+            let outputPath = NSTemporaryDirectory() + "rtmdet_output.png"
+            try? imageData.write(to: URL(fileURLWithPath: outputPath))
+            print("Output image saved to: \(outputPath)")
+        }
+
         print("\n=== Test completed successfully ===")
     }
 
