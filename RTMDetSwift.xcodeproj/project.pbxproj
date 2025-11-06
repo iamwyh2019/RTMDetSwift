@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		58B1A98E2EBCFCAA0085BDEC /* RTMDetSwift.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58B1A9822EBCFCAA0085BDEC /* RTMDetSwift.framework */; };
+		58B1AAB72EBD4A440085BDEC /* opencv2.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58B1AAB62EBD4A440085BDEC /* opencv2.framework */; };
+		58B1AAB82EBD4A440085BDEC /* opencv2.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 58B1AAB62EBD4A440085BDEC /* opencv2.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A134E0FEBED68D690A989121 /* Pods_RTMDetSwift.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D74B9C913733218E9B4CCFFB /* Pods_RTMDetSwift.framework */; };
 		EA6D16A278693BE3ED325C73 /* Pods_RTMDetSwiftTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B21F602178A5887035E9901F /* Pods_RTMDetSwiftTests.framework */; };
 /* End PBXBuildFile section */
@@ -22,9 +24,24 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		58B1AAB92EBD4A450085BDEC /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				58B1AAB82EBD4A440085BDEC /* opencv2.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		58B1A9822EBCFCAA0085BDEC /* RTMDetSwift.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = RTMDetSwift.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		58B1A98D2EBCFCAA0085BDEC /* RTMDetSwiftTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RTMDetSwiftTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		58B1AAB62EBD4A440085BDEC /* opencv2.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = opencv2.framework; path = Frameworks/opencv2.framework; sourceTree = "<group>"; };
 		8A696260B9BEA43C1DAF4D41 /* Pods-RTMDetSwiftTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RTMDetSwiftTests.debug.xcconfig"; path = "Target Support Files/Pods-RTMDetSwiftTests/Pods-RTMDetSwiftTests.debug.xcconfig"; sourceTree = "<group>"; };
 		B21F602178A5887035E9901F /* Pods_RTMDetSwiftTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RTMDetSwiftTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		BD1843004882432C43E67333 /* Pods-RTMDetSwift.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RTMDetSwift.release.xcconfig"; path = "Target Support Files/Pods-RTMDetSwift/Pods-RTMDetSwift.release.xcconfig"; sourceTree = "<group>"; };
@@ -37,6 +54,7 @@
 		58B1AA042EBD04570085BDEC /* Exceptions for "RTMDetSwift" folder in "RTMDetSwift" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			publicHeaders = (
+				OpenCVWrapper.h,
 				RTMDetSwift.h,
 			);
 			target = 58B1A9812EBCFCAA0085BDEC /* RTMDetSwift */;
@@ -64,6 +82,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				58B1AAB72EBD4A440085BDEC /* opencv2.framework in Frameworks */,
 				A134E0FEBED68D690A989121 /* Pods_RTMDetSwift.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -114,6 +133,7 @@
 		90D7DE56408539F3F045AB11 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				58B1AAB62EBD4A440085BDEC /* opencv2.framework */,
 				D74B9C913733218E9B4CCFFB /* Pods_RTMDetSwift.framework */,
 				B21F602178A5887035E9901F /* Pods_RTMDetSwiftTests.framework */,
 			);
@@ -163,6 +183,7 @@
 				58B1A9892EBCFCAA0085BDEC /* Sources */,
 				58B1A98A2EBCFCAA0085BDEC /* Frameworks */,
 				58B1A98B2EBCFCAA0085BDEC /* Resources */,
+				58B1AAB92EBD4A450085BDEC /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -439,12 +460,18 @@
 				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = J69W6UQUZ7;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				ENABLE_MODULE_VERIFIER = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
@@ -481,12 +508,18 @@
 				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = J69W6UQUZ7;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				ENABLE_MODULE_VERIFIER = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = arm64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
@@ -524,6 +557,10 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = J69W6UQUZ7;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.madabilitylab.RTMDetSwiftTests;
@@ -545,6 +582,10 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = J69W6UQUZ7;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.madabilitylab.RTMDetSwiftTests;

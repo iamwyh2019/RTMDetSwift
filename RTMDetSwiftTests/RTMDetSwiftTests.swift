@@ -172,6 +172,32 @@ struct RTMDetSwiftTests {
             print("  Class: \(className) (ID: \(detection.classId))")
             print("  Confidence: \(String(format: "%.2f%%", detection.confidence * 100))")
             print("  Bounding Box: [\(String(format: "%.1f", detection.bbox.x1)), \(String(format: "%.1f", detection.bbox.y1)), \(String(format: "%.1f", detection.bbox.x2)), \(String(format: "%.1f", detection.bbox.y2))]")
+            print("  Mask size: \(detection.mask.count) pixels (640x640)")
+            print("  Centroid: (\(String(format: "%.1f", detection.centroid.0)), \(String(format: "%.1f", detection.centroid.1)))")
+            print("  Number of contours: \(detection.contours.count)")
+
+            // Print first contour details (if any)
+            if let firstContour = detection.contours.first {
+                let numPoints = firstContour.count / 2
+                print("  First contour has \(numPoints) points")
+
+                // Print first few points
+                if numPoints > 0 {
+                    let pointsToPrint = min(3, numPoints)
+                    var pointsStr = "["
+                    for i in 0..<pointsToPrint {
+                        let x = firstContour[i * 2]
+                        let y = firstContour[i * 2 + 1]
+                        pointsStr += "(\(String(format: "%.1f", x)), \(String(format: "%.1f", y)))"
+                        if i < pointsToPrint - 1 { pointsStr += ", " }
+                    }
+                    if numPoints > pointsToPrint {
+                        pointsStr += ", ..."
+                    }
+                    pointsStr += "]"
+                    print("  First contour points: \(pointsStr)")
+                }
+            }
         }
 
         print("\n=== Test completed successfully ===")

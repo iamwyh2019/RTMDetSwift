@@ -14,11 +14,17 @@ public struct Detection {
     public let classId: Int
     public let confidence: Float
     public let bbox: BoundingBox
+    public let mask: [Float]          // 640x640 segmentation mask
+    public let contours: [[Float]]    // Array of contours, each contour is [x1,y1,x2,y2,...]
+    public let centroid: (Float, Float) // Mask centroid (x, y)
 
-    public init(classId: Int, confidence: Float, bbox: BoundingBox) {
+    public init(classId: Int, confidence: Float, bbox: BoundingBox, mask: [Float], contours: [[Float]], centroid: (Float, Float)) {
         self.classId = classId
         self.confidence = confidence
         self.bbox = bbox
+        self.mask = mask
+        self.contours = contours
+        self.centroid = centroid
     }
 }
 

@@ -4,3 +4,6 @@
 *.mlmodel
 *.tflite
 *.ort
+
+# opencv
+Frameworks/opencv2.framework

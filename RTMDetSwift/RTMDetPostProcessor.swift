@@ -38,6 +38,11 @@ public class RTMDetPostProcessor {
                          userInfo: [NSLocalizedDescriptionKey: "Missing 'dets' output"])
         }
 
+        guard let masksOutput = outputs["masks"] else {
+            throw NSError(domain: "RTMDetPostProcessor", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Missing 'masks' output"])
+        }
+
         // Get labels data (INT64)
         guard let labelsData = try? labelsOutput.tensorData() as Data else {
             throw NSError(domain: "RTMDetPostProcessor", code: -1,
@@ -50,6 +55,12 @@ public class RTMDetPostProcessor {
                          userInfo: [NSLocalizedDescriptionKey: "Failed to get detections data"])
         }
 
+        // Get masks data (FLOAT32)
+        guard let masksData = try? masksOutput.tensorData() as Data else {
+            throw NSError(domain: "RTMDetPostProcessor", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Failed to get masks data"])
+        }
+
         // Parse data using SIMD-friendly operations
         let numDetections = 100
         // Parse labels - correctly read as INT64
@@ -59,6 +70,10 @@ public class RTMDetPostProcessor {
         }
 
         let dets = detsData.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> UnsafePointer<Float> in
+            ptr.bindMemory(to: Float.self).baseAddress!
+        }
+
+        let masks = masksData.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> UnsafePointer<Float> in
             ptr.bindMemory(to: Float.self).baseAddress!
         }
 
@@ -80,7 +95,10 @@ public class RTMDetPostProcessor {
         // Compare: result[i] = (confidence[i] >= threshold) ? 1.0 : 0.0
         vDSP_vthres(confidences, 1, &threshold, &comparisonResult, 1, vDSP_Length(numDetections))
 
-        // Build detections for valid boxes
+        // Build detections for valid boxes with masks
+        let maskSize = 640
+        let maskArea = maskSize * maskSize
+
         for i in 0..<numDetections {
             if confidences[i] >= confidenceThreshold {
                 let offset = i * 5
@@ -92,7 +110,39 @@ public class RTMDetPostProcessor {
 
                 let classId = labels[i]
                 let bbox = BoundingBox(x1: x1, y1: y1, x2: x2, y2: y2)
-                detections.append(Detection(classId: classId, confidence: confidence, bbox: bbox))
+
+                // Extract mask for this detection (640x640)
+                let maskOffset = i * maskArea
+                let maskPointer = masks.advanced(by: maskOffset)
+
+                // Convert mask to Array for storage
+                let maskArray = Array(UnsafeBufferPointer(start: maskPointer, count: maskArea))
+
+                // Extract contours and centroid using OpenCV
+                let contoursDict = OpenCVWrapper.findContours(
+                    maskPointer,
+                    width: Int32(maskSize),
+                    height: Int32(maskSize)
+                )
+
+                // Parse contours from NSDictionary
+                let contoursNS = contoursDict["contours"] as? [[NSNumber]] ?? []
+                let contours = contoursNS.map { contour in
+                    contour.map { $0.floatValue }
+                }
+
+                // Parse centroid from NSDictionary
+                let centroidNS = contoursDict["centroid"] as? [NSNumber] ?? [0, 0]
+                let centroid = (centroidNS[0].floatValue, centroidNS[1].floatValue)
+
+                detections.append(Detection(
+                    classId: classId,
+                    confidence: confidence,
+                    bbox: bbox,
+                    mask: maskArray,
+                    contours: contours,
+                    centroid: centroid
+                ))
             }
         }
 

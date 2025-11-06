@@ -15,3 +15,6 @@ FOUNDATION_EXPORT const unsigned char RTMDetSwiftVersionString[];
 
 // Import ONNX Runtime
 #import <onnxruntime_objc/onnxruntime.h>
+
+// Import OpenCV Wrapper
+#import <RTMDetSwift/OpenCVWrapper.h>
