@@ -115,7 +115,7 @@ public class RTMDetInferencer {
         return floatArray
     }
 
-    public func runInference(inputData: [Float]) throws -> [ORTValue] {
+    public func runInference(inputData: [Float]) throws -> [String: ORTValue] {
         guard let session = session, let env = env else {
             throw NSError(domain: "RTMDetInferencer", code: -1, userInfo: [NSLocalizedDescriptionKey: "Session not initialized"])
         }
@@ -142,17 +142,17 @@ public class RTMDetInferencer {
         let outputNames = try session.outputNames()
         let outputNameSet = Set(outputNames)
 
-        // Run inference
+        // Run inference - returns dictionary with output names as keys
         let outputs = try session.run(
             withInputs: [inputName: inputTensor],
             outputNames: outputNameSet,
             runOptions: nil
         )
 
-        return Array(outputs.values)
+        return outputs
     }
 
-    public func infer(image: UIImage) -> [ORTValue]? {
+    public func infer(image: UIImage) -> [String: ORTValue]? {
         guard let preprocessedData = preprocess(image: image) else {
             print("Preprocessing failed")
             return nil

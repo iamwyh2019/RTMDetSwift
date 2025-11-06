@@ -20,21 +20,23 @@ public class RTMDetPostProcessor {
 
     /// Post-process RTMDet outputs with SIMD optimization
     /// - Parameters:
-    ///   - outputs: Array of ORTValue outputs [labels, masks, dets]
+    ///   - outputs: Dictionary of output names to ORTValue
     /// - Returns: Array of Detection objects after NMS
-    public func process(outputs: [ORTValue]) throws -> [Detection] {
-        guard outputs.count == 3 else {
+    public func process(outputs: [String: ORTValue]) throws -> [Detection] {
+        // RTMDet outputs by name:
+        // "labels": [1, 100] - INT64 class IDs
+        // "dets": [1, 100, 5] - FLOAT32 [x1, y1, x2, y2, confidence]
+        // "masks": [1, 100, 640, 640] - FLOAT32 segmentation masks
+
+        guard let labelsOutput = outputs["labels"] else {
             throw NSError(domain: "RTMDetPostProcessor", code: -1,
-                         userInfo: [NSLocalizedDescriptionKey: "Expected 3 outputs, got \(outputs.count)"])
+                         userInfo: [NSLocalizedDescriptionKey: "Missing 'labels' output"])
         }
 
-        // RTMDet outputs:
-        // Output 0: labels [1, 100] - INT64 class IDs
-        // Output 1: dets [1, 100, 5] - FLOAT32 [x1, y1, x2, y2, confidence]
-        // Output 2: masks [1, 100, 640, 640] - FLOAT32 segmentation masks
-
-        let labelsOutput = outputs[0]
-        let detsOutput = outputs[1]
+        guard let detsOutput = outputs["dets"] else {
+            throw NSError(domain: "RTMDetPostProcessor", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Missing 'dets' output"])
+        }
 
         // Get labels data (INT64)
         guard let labelsData = try? labelsOutput.tensorData() as Data else {
