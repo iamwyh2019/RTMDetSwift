@@ -146,13 +146,16 @@ public class RTMDetPostProcessor {
             }
         }
 
-        // Apply NMS with optimized IoU calculation (matches YOLOUnity approach)
-        let finalDetections = applyNMSOptimized(detections: detections, iouThreshold: iouThreshold, limit: 20)
+        // Apply NMS as refinement step (model already has built-in NMS)
+        // RTMDet outputs max 100 detections, so limit to 100 to avoid discarding valid results
+        let finalDetections = applyNMSOptimized(detections: detections, iouThreshold: iouThreshold, limit: 100)
 
         return finalDetections
     }
 
-    /// Optimized NMS using early exit strategy (matches YOLOUnity implementation)
+    /// Optimized NMS using early exit strategy
+    /// Note: RTMDet model already applies NMS internally (outputs max 100 boxes)
+    /// This is a refinement pass to remove any remaining overlaps after confidence filtering
     private func applyNMSOptimized(detections: [Detection], iouThreshold: Float, limit: Int) -> [Detection] {
         guard !detections.isEmpty else { return [] }
 
