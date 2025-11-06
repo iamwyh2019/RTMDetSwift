@@ -83,7 +83,7 @@ Initialize the RTMDet model from an ONNX file.
 
 ```c
 bool InitializeRTMDet(
-    const char* modelPath,          // Full path to .onnx model file
+    const char* modelPath,          // Model name or full path to .onnx file
     float confidenceThreshold,      // Confidence threshold (e.g., 0.5)
     float iouThreshold              // IoU threshold - IGNORED (kept for API compatibility)
 );
@@ -93,11 +93,34 @@ bool InitializeRTMDet(
 
 **Note**: The `iouThreshold` parameter is **ignored** because RTMDet has built-in NMS in the ONNX model. It's kept for API compatibility with YOLOUnity.
 
-**Example:**
+**Model Path Resolution:**
+The `modelPath` parameter accepts three formats:
+
+1. **Model name only** (like YOLOUnity): `"rtmdet-m"`
+   - Looks for `rtmdet-m.onnx` in the app bundle
+   - Then tries Documents directory
+
+2. **Model name with extension**: `"rtmdet-m.onnx"`
+   - Same as above
+
+3. **Full path**: `"/var/mobile/Containers/Data/Application/.../rtmdet-m.onnx"`
+   - Uses the path directly
+
+**Examples:**
 ```c
+// Model name (searches bundle)
+bool success = InitializeRTMDet("rtmdet-m", 0.5, 0.5);
+
+// Model name with extension (searches bundle)
+bool success = InitializeRTMDet("rtmdet-m.onnx", 0.5, 0.5);
+
+// Full path (uses directly)
 bool success = InitializeRTMDet("/path/to/rtmdet-m.onnx", 0.5, 0.5);
-// Note: The second 0.5 (iouThreshold) is ignored - RTMDet uses built-in NMS
 ```
+
+**Where to Place Model Files:**
+- **Recommended**: Add `rtmdet-m.onnx` to your Xcode project and it will be in the app bundle
+- **Alternative**: Copy to Documents directory at runtime
 
 ### 3. RunRTMDet
 
