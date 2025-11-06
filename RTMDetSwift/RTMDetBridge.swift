@@ -40,10 +40,43 @@ public func InitializeRTMDet(
     confidenceThreshold: Float,
     iouThreshold: Float
 ) -> Bool {
-    let path = String(cString: modelPath)
+    let pathOrName = String(cString: modelPath)
 
-    guard let newInferencer = RTMDetInferencer(modelPath: path, inputWidth: 640, inputHeight: 640) else {
-        NSLog("Error: Failed to initialize RTMDetInferencer with model at \(path)")
+    // Resolve model path: check if it's a full path or just a model name
+    let fullPath: String
+    if pathOrName.hasPrefix("/") || pathOrName.hasPrefix("file://") {
+        // Already a full path
+        fullPath = pathOrName.replacingOccurrences(of: "file://", with: "")
+    } else {
+        // Model name - look in main bundle
+        let modelName = pathOrName.replacingOccurrences(of: ".onnx", with: "")
+
+        if let bundlePath = Bundle.main.path(forResource: modelName, ofType: "onnx") {
+            fullPath = bundlePath
+            NSLog("Found model in bundle: \(bundlePath)")
+        } else if let bundlePath = Bundle.main.path(forResource: modelName, ofType: "mlpackage") {
+            // Also check for .mlpackage (CoreML format)
+            fullPath = bundlePath
+            NSLog("Found model in bundle: \(bundlePath)")
+        } else {
+            // Try looking in Documents directory
+            let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
+            let documentsModelPath = (documentsPath as NSString).appendingPathComponent(pathOrName)
+
+            if FileManager.default.fileExists(atPath: documentsModelPath) {
+                fullPath = documentsModelPath
+                NSLog("Found model in Documents: \(documentsModelPath)")
+            } else {
+                NSLog("Error: Model not found. Tried:")
+                NSLog("  - Bundle: \(modelName).onnx")
+                NSLog("  - Documents: \(documentsModelPath)")
+                return false
+            }
+        }
+    }
+
+    guard let newInferencer = RTMDetInferencer(modelPath: fullPath, inputWidth: 640, inputHeight: 640) else {
+        NSLog("Error: Failed to initialize RTMDetInferencer with model at \(fullPath)")
         return false
     }
 
@@ -51,7 +84,7 @@ public func InitializeRTMDet(
     RTMDetBridge.confidenceThreshold = confidenceThreshold
     RTMDetBridge.iouThreshold = iouThreshold
 
-    NSLog("Initialized RTMDet with model=\(path), confidence=\(confidenceThreshold), iou=\(iouThreshold)")
+    NSLog("Initialized RTMDet with model=\(fullPath), confidence=\(confidenceThreshold), iou=\(iouThreshold)")
     return true
 }
 
