@@ -502,8 +502,8 @@ private func convertRGBAToCHW(rgba: [Float], width: Int, height: Int) -> [Float]
     return chw
 }
 
-/// Convert RGB byte array to RGB CHW float array (normalized to [0, 1])
-/// Input: [R0, G0, B0, R1, G1, B1, ...] - RGB bytes [0-255]
+/// Convert BGRA byte array to RGB CHW float array (normalized to [0, 1])
+/// Input: [B0, G0, R0, A0, B1, G1, R1, A1, ...] - BGRA bytes [0-255] from Unity shader
 /// Output: [R0, R1, R2, ..., G0, G1, G2, ..., B0, B1, B2, ...] - RGB planar floats [0-1]
 private func convertBytesToCHW(bytes: [UInt8], width: Int, height: Int) -> [Float] {
     let pixelCount = width * height
@@ -513,12 +513,18 @@ private func convertBytesToCHW(bytes: [UInt8], width: Int, height: Int) -> [Floa
     DispatchQueue.concurrentPerform(iterations: height) { y in
         for x in 0..<width {
             let pixelIndex = y * width + x
-            let rgbIndex = pixelIndex * 3
+            let bgraIndex = pixelIndex * 4  // Unity sends BGRA (4 channels)
 
-            // Normalize from [0, 255] to [0, 1]
-            chw[pixelIndex] = Float(bytes[rgbIndex]) / 255.0  // R
-            chw[pixelCount + pixelIndex] = Float(bytes[rgbIndex + 1]) / 255.0  // G
-            chw[2 * pixelCount + pixelIndex] = Float(bytes[rgbIndex + 2]) / 255.0  // B
+            // Read BGRA and output as RGB CHW, normalized [0, 255] → [0, 1]
+            let b = Float(bytes[bgraIndex + 0]) / 255.0
+            let g = Float(bytes[bgraIndex + 1]) / 255.0
+            let r = Float(bytes[bgraIndex + 2]) / 255.0
+            // Skip alpha channel (bgraIndex + 3)
+
+            // Write to CHW format (RGB planar)
+            chw[pixelIndex] = r  // R channel
+            chw[pixelCount + pixelIndex] = g  // G channel
+            chw[2 * pixelCount + pixelIndex] = b  // B channel
         }
     }
 
