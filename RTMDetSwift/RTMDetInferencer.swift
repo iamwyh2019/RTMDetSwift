@@ -190,12 +190,40 @@ public class RTMDetInferencer {
     }
 }
 
-// Extension to resize UIImage
+// Extension to resize UIImage efficiently using CGContext
 extension UIImage {
     func resize(to size: CGSize) -> UIImage? {
-        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
-        defer { UIGraphicsEndImageContext() }
-        draw(in: CGRect(origin: .zero, size: size))
-        return UIGraphicsGetImageFromCurrentImageContext()
+        // Use autoreleasepool to prevent memory buildup
+        return autoreleasepool {
+            guard let cgImage = self.cgImage else { return nil }
+
+            let width = Int(size.width)
+            let height = Int(size.height)
+            let bitsPerComponent = 8
+            let bytesPerRow = width * 4
+            let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+            guard let context = CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: bitsPerComponent,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else {
+                return nil
+            }
+
+            // Draw the image
+            context.interpolationQuality = .high
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+            guard let scaledImage = context.makeImage() else {
+                return nil
+            }
+
+            return UIImage(cgImage: scaledImage)
+        }
     }
 }
