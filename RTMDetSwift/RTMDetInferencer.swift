@@ -42,6 +42,16 @@ public class RTMDetInferencer {
             coreMLOptions.onlyAllowStaticInputShapes = true  // Static shapes = less memory
             coreMLOptions.createMLProgram = true  // Use MLProgram format (iOS 15+) for better memory
 
+            // Log CoreML configuration
+            print("=== CoreML EP Configuration ===")
+            print("useCPUOnly: \(coreMLOptions.useCPUOnly)")
+            print("enableOnSubgraphs: \(coreMLOptions.enableOnSubgraphs)")
+            print("onlyEnableForDevicesWithANE: \(coreMLOptions.onlyEnableForDevicesWithANE)")
+            print("onlyAllowStaticInputShapes: \(coreMLOptions.onlyAllowStaticInputShapes)")
+            print("createMLProgram: \(coreMLOptions.createMLProgram)")
+            print("Compute Units: ALL (ANE+GPU+CPU) - default when useCPUOnly=false")
+            print("===============================")
+
             try options.appendCoreMLExecutionProvider(with: coreMLOptions)
 
             // Create session
@@ -166,12 +176,15 @@ public class RTMDetInferencer {
         let outputNames = try session.outputNames()
         let outputNameSet = Set(outputNames)
 
-        // Run inference - returns dictionary with output names as keys
+        // Run inference with timing - returns dictionary with output names as keys
+        let startTime = CFAbsoluteTimeGetCurrent()
         let outputs = try session.run(
             withInputs: [inputName: inputTensor],
             outputNames: outputNameSet,
             runOptions: nil
         )
+        let inferenceTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
+        print("Inference time: \(String(format: "%.2f", inferenceTime))ms")
 
         return outputs
     }

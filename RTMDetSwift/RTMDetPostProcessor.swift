@@ -74,6 +74,9 @@ public class RTMDetPostProcessor {
             ptr.bindMemory(to: Float.self).baseAddress!
         }
 
+        // Safety: Calculate total available mask elements
+        let totalMaskElements = masksData.count / MemoryLayout<Float>.size
+
         let masks = masksData.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> UnsafePointer<Float> in
             ptr.bindMemory(to: Float.self).baseAddress!
         }
@@ -99,6 +102,14 @@ public class RTMDetPostProcessor {
         // Build detections for valid boxes with masks
         let maskSize = 640
         let maskArea = maskSize * maskSize
+
+        // Validate mask tensor size
+        let expectedMaskElements = numDetections * maskArea
+        if totalMaskElements < expectedMaskElements {
+            print("WARNING: Mask tensor size mismatch! Expected \(expectedMaskElements), got \(totalMaskElements)")
+            print("This will cause crashes. Skipping mask processing.")
+            return detections
+        }
 
         for i in 0..<numDetections {
             if confidences[i] >= confidenceThreshold {

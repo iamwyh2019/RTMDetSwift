@@ -137,7 +137,15 @@ public func RunRTMDet(
             return
         }
 
-        runDetection(inferencer: inferencer, image: image, timestamp: timestamp, scaleX: scaleX, scaleY: scaleY)
+        runDetection(
+            inferencer: inferencer,
+            image: image,
+            originalWidth: width,
+            originalHeight: height,
+            timestamp: timestamp,
+            scaleX: scaleX,
+            scaleY: scaleY
+        )
     }
 }
 
@@ -175,7 +183,15 @@ public func RunRTMDet_Byte(
             return
         }
 
-        runDetection(inferencer: inferencer, image: image, timestamp: timestamp, scaleX: scaleX, scaleY: scaleY)
+        runDetection(
+            inferencer: inferencer,
+            image: image,
+            originalWidth: width,
+            originalHeight: height,
+            timestamp: timestamp,
+            scaleX: scaleX,
+            scaleY: scaleY
+        )
     }
 }
 
@@ -184,6 +200,8 @@ public func RunRTMDet_Byte(
 private func runDetection(
     inferencer: RTMDetInferencer,
     image: UIImage,
+    originalWidth: Int,
+    originalHeight: Int,
     timestamp: UInt64,
     scaleX: Float,
     scaleY: Float
@@ -207,15 +225,14 @@ private func runDetection(
                 return
             }
 
-                // Convert detections to callback format
-            // All coordinates are in 640x640 space, need to scale to original image space
-            let originalWidth = Float(image.size.width)
-            let originalHeight = Float(image.size.height)
+            // Convert detections to callback format
+            // All coordinates are in 640x640 model space, need to scale to ACTUAL original image space
+            // CRITICAL: Use the original dimensions passed from Unity, NOT image.size (which is 640x640)
             let modelSize: Float = 640.0
 
             // Scale factors: from 640x640 model space to original image space
-            let toOriginalX = originalWidth / modelSize
-            let toOriginalY = originalHeight / modelSize
+            let toOriginalX = Float(originalWidth) / modelSize
+            let toOriginalY = Float(originalHeight) / modelSize
 
             // Apply additional user-specified scaling
             let finalScaleX = toOriginalX * scaleX
