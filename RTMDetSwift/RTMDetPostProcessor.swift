@@ -44,6 +44,55 @@ public class RTMDetPostProcessor {
                          userInfo: [NSLocalizedDescriptionKey: "Missing 'masks' output"])
         }
 
+        // Get output shapes to handle dynamic dimensions
+        let labelsShape: [NSNumber]
+        let detsShape: [NSNumber]
+        let masksShape: [NSNumber]
+
+        do {
+            labelsShape = try labelsOutput.tensorTypeAndShapeInfo().shape
+            detsShape = try detsOutput.tensorTypeAndShapeInfo().shape
+            masksShape = try masksOutput.tensorTypeAndShapeInfo().shape
+
+            print("=== Model Output Shapes ===")
+            print("labels shape: \(labelsShape)")
+            print("dets shape: \(detsShape)")
+            print("masks shape: \(masksShape)")
+            print("===========================")
+        } catch {
+            throw NSError(domain: "RTMDetPostProcessor", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Failed to get tensor shapes: \(error)"])
+        }
+
+        // Extract dimensions from shapes
+        // labels: [batch, numDetections] -> we want numDetections
+        // dets: [batch, numDetections, 5] -> we want numDetections
+        // masks: [batch, numDetections, H, W] OR [batch, H, W] -> need to check
+        guard labelsShape.count >= 2, detsShape.count >= 3 else {
+            throw NSError(domain: "RTMDetPostProcessor", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Unexpected tensor shapes"])
+        }
+
+        let numDetections = Int(truncating: labelsShape[1])
+
+        // Determine mask dimensions
+        let maskSize: Int
+        let numMasks: Int
+        if masksShape.count == 4 {
+            // Standard format: [batch, numDetections, H, W]
+            numMasks = Int(truncating: masksShape[1])
+            maskSize = Int(truncating: masksShape[2])
+        } else if masksShape.count == 3 {
+            // Single mask format: [batch, H, W]
+            numMasks = 1
+            maskSize = Int(truncating: masksShape[1])
+        } else {
+            throw NSError(domain: "RTMDetPostProcessor", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Unexpected mask shape: \(masksShape)"])
+        }
+
+        print("Parsed: numDetections=\(numDetections), numMasks=\(numMasks), maskSize=\(maskSize)")
+
         // Get labels data (INT64)
         guard let labelsData = try? labelsOutput.tensorData() as Data else {
             throw NSError(domain: "RTMDetPostProcessor", code: -1,
@@ -62,8 +111,6 @@ public class RTMDetPostProcessor {
                          userInfo: [NSLocalizedDescriptionKey: "Failed to get masks data"])
         }
 
-        // Parse data using SIMD-friendly operations
-        let numDetections = 100
         // Parse labels - correctly read as INT64
         let labels = labelsData.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> [Int] in
             let typedPointer = ptr.bindMemory(to: Int64.self)
@@ -73,9 +120,6 @@ public class RTMDetPostProcessor {
         let dets = detsData.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> UnsafePointer<Float> in
             ptr.bindMemory(to: Float.self).baseAddress!
         }
-
-        // Safety: Calculate total available mask elements
-        let totalMaskElements = masksData.count / MemoryLayout<Float>.size
 
         let masks = masksData.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> UnsafePointer<Float> in
             ptr.bindMemory(to: Float.self).baseAddress!
@@ -100,16 +144,7 @@ public class RTMDetPostProcessor {
         vDSP_vthres(confidences, 1, &threshold, &comparisonResult, 1, vDSP_Length(numDetections))
 
         // Build detections for valid boxes with masks
-        let maskSize = 640
         let maskArea = maskSize * maskSize
-
-        // Validate mask tensor size
-        let expectedMaskElements = numDetections * maskArea
-        if totalMaskElements < expectedMaskElements {
-            print("WARNING: Mask tensor size mismatch! Expected \(expectedMaskElements), got \(totalMaskElements)")
-            print("This will cause crashes. Skipping mask processing.")
-            return detections
-        }
 
         for i in 0..<numDetections {
             if confidences[i] >= confidenceThreshold {
@@ -123,8 +158,10 @@ public class RTMDetPostProcessor {
                 let classId = labels[i]
                 let bbox = BoundingBox(x1: x1, y1: y1, x2: x2, y2: y2)
 
-                // Extract mask for this detection (640x640)
-                let maskOffset = i * maskArea
+                // Extract mask for this detection
+                // Handle case where we have fewer masks than detections (e.g., single mask output)
+                let maskIndex = (numMasks == 1) ? 0 : min(i, numMasks - 1)
+                let maskOffset = maskIndex * maskArea
                 let maskPointer = masks.advanced(by: maskOffset)
 
                 // Convert mask to Array for storage
