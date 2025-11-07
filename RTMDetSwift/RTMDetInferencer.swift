@@ -197,6 +197,24 @@ public class RTMDetInferencer {
     ///   - confidenceThreshold: Confidence threshold for detections
     ///   - iouThreshold: IoU threshold for NMS
     /// - Returns: Array of Detection objects
+    /// Run inference directly on preprocessed float array (CHW format)
+    /// - Parameters:
+    ///   - inputData: Float array in CHW format [3, H, W], normalized to [0, 1]
+    ///   - confidenceThreshold: Confidence threshold for detections
+    ///   - iouThreshold: IoU threshold (unused, kept for compatibility)
+    /// - Returns: Array of Detection objects
+    public func detectFromFloatArray(inputData: [Float], confidenceThreshold: Float = 0.5, iouThreshold: Float = 0.5) -> [Detection]? {
+        do {
+            let outputs = try runInference(inputData: inputData)
+            let postProcessor = RTMDetPostProcessor(confidenceThreshold: confidenceThreshold, iouThreshold: iouThreshold)
+            let detections = try postProcessor.process(outputs: outputs)
+            return detections
+        } catch {
+            print("Inference or post-processing failed: \(error)")
+            return nil
+        }
+    }
+
     public func detect(image: UIImage, confidenceThreshold: Float = 0.5, iouThreshold: Float = 0.5) -> [Detection]? {
         guard let outputs = infer(image: image) else {
             return nil
