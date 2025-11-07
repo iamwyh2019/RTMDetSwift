@@ -198,18 +198,22 @@ public class RTMDetInferencer {
     ///   - iouThreshold: IoU threshold for NMS
     /// - Returns: Array of Detection objects
     public func detect(image: UIImage, confidenceThreshold: Float = 0.5, iouThreshold: Float = 0.5) -> [Detection]? {
-        guard let outputs = infer(image: image) else {
-            return nil
-        }
+        // Use autoreleasepool to ensure ORT tensors are released immediately
+        return autoreleasepool {
+            guard let outputs = infer(image: image) else {
+                return nil
+            }
 
-        let postProcessor = RTMDetPostProcessor(confidenceThreshold: confidenceThreshold, iouThreshold: iouThreshold)
+            let postProcessor = RTMDetPostProcessor(confidenceThreshold: confidenceThreshold, iouThreshold: iouThreshold)
 
-        do {
-            let detections = try postProcessor.process(outputs: outputs)
-            return detections
-        } catch {
-            print("Post-processing failed: \(error)")
-            return nil
+            do {
+                let detections = try postProcessor.process(outputs: outputs)
+                // outputs (ORTValue objects) will be released when autoreleasepool exits
+                return detections
+            } catch {
+                print("Post-processing failed: \(error)")
+                return nil
+            }
         }
     }
 }
