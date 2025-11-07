@@ -115,12 +115,27 @@ public func RunRTMDet(
         return
     }
 
-    guard let image = floatArrayToUIImage(data: imageData, width: width, height: height) else {
-        NSLog("Error: Failed to convert float array to UIImage.")
-        return
-    }
+    // Skip UIImage creation - convert and resize directly to save memory
+    autoreleasepool {
+        guard let resizedFloats = resizeFloatImage(
+            data: imageData,
+            sourceWidth: width,
+            sourceHeight: height,
+            targetWidth: 640,
+            targetHeight: 640
+        ) else {
+            NSLog("Error: Failed to resize float image data.")
+            return
+        }
 
-    runDetection(inferencer: inferencer, image: image, timestamp: timestamp, scaleX: scaleX, scaleY: scaleY)
+        // Create minimal UIImage from resized data for API compatibility
+        guard let image = floatArrayToUIImageDirect(data: resizedFloats, width: 640, height: 640) else {
+            NSLog("Error: Failed to convert resized float array to UIImage.")
+            return
+        }
+
+        runDetection(inferencer: inferencer, image: image, timestamp: timestamp, scaleX: scaleX, scaleY: scaleY)
+    }
 }
 
 // Run RTMDet on byte image data (RGB format)
@@ -138,12 +153,27 @@ public func RunRTMDet_Byte(
         return
     }
 
-    guard let image = byteArrayToUIImage(data: imageData, width: width, height: height) else {
-        NSLog("Error: Failed to convert byte array to UIImage.")
-        return
-    }
+    // Skip UIImage creation - convert and resize directly to save memory
+    autoreleasepool {
+        guard let resizedBytes = resizeByteImage(
+            data: imageData,
+            sourceWidth: width,
+            sourceHeight: height,
+            targetWidth: 640,
+            targetHeight: 640
+        ) else {
+            NSLog("Error: Failed to resize byte image data.")
+            return
+        }
 
-    runDetection(inferencer: inferencer, image: image, timestamp: timestamp, scaleX: scaleX, scaleY: scaleY)
+        // Create minimal UIImage from resized data for API compatibility
+        guard let image = byteArrayToUIImageDirect(data: resizedBytes, width: 640, height: 640) else {
+            NSLog("Error: Failed to convert resized byte array to UIImage.")
+            return
+        }
+
+        runDetection(inferencer: inferencer, image: image, timestamp: timestamp, scaleX: scaleX, scaleY: scaleY)
+    }
 }
 
 // MARK: - Helper Functions
@@ -358,6 +388,127 @@ private func createUIImage(from pixels: [UInt8], width: Int, height: Int) -> UII
 // Get current timestamp in milliseconds (matches YOLOUnity)
 private func getCurrentTimestamp() -> UInt64 {
     return UInt64(Date().timeIntervalSince1970 * 1000)
+}
+
+// MARK: - Memory-Optimized Image Conversion
+
+/// Resize float image data directly without creating intermediate UIImages
+/// This saves significant memory by avoiding large UIImage allocations
+private func resizeFloatImage(
+    data: UnsafePointer<Float>,
+    sourceWidth: Int,
+    sourceHeight: Int,
+    targetWidth: Int,
+    targetHeight: Int
+) -> [Float]? {
+    let sourceSize = sourceWidth * sourceHeight * 4  // RGBA
+    let targetSize = targetWidth * targetHeight * 4
+
+    var resized = [Float](repeating: 0, count: targetSize)
+
+    // Calculate scale factors
+    let scaleX = Float(sourceWidth) / Float(targetWidth)
+    let scaleY = Float(sourceHeight) / Float(targetHeight)
+
+    // Bilinear interpolation resize (parallel processing)
+    DispatchQueue.concurrentPerform(iterations: targetHeight) { y in
+        let sourceY = targetHeight - 1 - y  // Y-flip for Unity
+        let sy = Float(sourceY) * scaleY
+        let sy1 = Int(sy)
+        let sy2 = min(sy1 + 1, sourceHeight - 1)
+        let fy = sy - Float(sy1)
+
+        for x in 0..<targetWidth {
+            let sx = Float(x) * scaleX
+            let sx1 = Int(sx)
+            let sx2 = min(sx1 + 1, sourceWidth - 1)
+            let fx = sx - Float(sx1)
+
+            let destIdx = y * targetWidth * 4 + x * 4
+
+            // Bilinear interpolation for each channel
+            for c in 0..<4 {
+                let p1 = data[sy1 * sourceWidth * 4 + sx1 * 4 + c]
+                let p2 = data[sy1 * sourceWidth * 4 + sx2 * 4 + c]
+                let p3 = data[sy2 * sourceWidth * 4 + sx1 * 4 + c]
+                let p4 = data[sy2 * sourceWidth * 4 + sx2 * 4 + c]
+
+                let top = p1 * (1 - fx) + p2 * fx
+                let bottom = p3 * (1 - fx) + p4 * fx
+                resized[destIdx + c] = top * (1 - fy) + bottom * fy
+            }
+        }
+    }
+
+    return resized
+}
+
+/// Convert float array directly to UIImage (no intermediate conversions)
+/// Only used for already-resized 640x640 data
+private func floatArrayToUIImageDirect(data: [Float], width: Int, height: Int) -> UIImage? {
+    let pixelCount = width * height * 4
+    var pixels = [UInt8](repeating: 0, count: pixelCount)
+
+    // Fast conversion without lookup table (data is already small)
+    for i in 0..<pixelCount {
+        pixels[i] = UInt8(max(0, min(255, data[i] * 255)))
+    }
+
+    return createUIImage(from: pixels, width: width, height: height)
+}
+
+/// Resize byte image data directly without creating intermediate UIImages
+private func resizeByteImage(
+    data: UnsafePointer<UInt8>,
+    sourceWidth: Int,
+    sourceHeight: Int,
+    targetWidth: Int,
+    targetHeight: Int
+) -> [UInt8]? {
+    let targetSize = targetWidth * targetHeight * 4
+    var resized = [UInt8](repeating: 0, count: targetSize)
+
+    // Calculate scale factors
+    let scaleX = Float(sourceWidth) / Float(targetWidth)
+    let scaleY = Float(sourceHeight) / Float(targetHeight)
+
+    // Bilinear interpolation resize (parallel processing)
+    DispatchQueue.concurrentPerform(iterations: targetHeight) { y in
+        let sourceY = targetHeight - 1 - y  // Y-flip for Unity
+        let sy = Float(sourceY) * scaleY
+        let sy1 = Int(sy)
+        let sy2 = min(sy1 + 1, sourceHeight - 1)
+        let fy = sy - Float(sy1)
+
+        for x in 0..<targetWidth {
+            let sx = Float(x) * scaleX
+            let sx1 = Int(sx)
+            let sx2 = min(sx1 + 1, sourceWidth - 1)
+            let fx = sx - Float(sx1)
+
+            let destIdx = y * targetWidth * 4 + x * 4
+
+            // Bilinear interpolation for each channel
+            for c in 0..<4 {
+                let p1 = Float(data[sy1 * sourceWidth * 4 + sx1 * 4 + c])
+                let p2 = Float(data[sy1 * sourceWidth * 4 + sx2 * 4 + c])
+                let p3 = Float(data[sy2 * sourceWidth * 4 + sx1 * 4 + c])
+                let p4 = Float(data[sy2 * sourceWidth * 4 + sx2 * 4 + c])
+
+                let top = p1 * (1 - fx) + p2 * fx
+                let bottom = p3 * (1 - fx) + p4 * fx
+                resized[destIdx + c] = UInt8(top * (1 - fy) + bottom * fy)
+            }
+        }
+    }
+
+    return resized
+}
+
+/// Convert byte array directly to UIImage (no intermediate conversions)
+/// Only used for already-resized 640x640 data
+private func byteArrayToUIImageDirect(data: [UInt8], width: Int, height: Int) -> UIImage? {
+    return createUIImage(from: data, width: width, height: height)
 }
 
 // Namespace for static variables
