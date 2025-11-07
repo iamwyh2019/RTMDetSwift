@@ -26,11 +26,27 @@ public class RTMDetInferencer {
             // Create session options
             let options = try ORTSessionOptions()
 
-            // Enable CoreML for Neural Engine acceleration
+            // CRITICAL: Disable CPU memory arena to prevent memory buildup
+            // Memory arena pre-allocates and never returns memory to system
+            try options.setEnableCPUMemArena(false)
+            try options.setEnableMemPattern(false)
+
+            // Use basic graph optimization for best CoreML compatibility
+            try options.setGraphOptimizationLevel(.basic)
+
+            // Enable CoreML with CPU+GPU (NOT Neural Engine)
+            // Neural Engine on A12+ devices (iPhone 16 Pro) pre-allocates huge buffers
+            // that cause memory limit crashes on device (but not simulator)
             let coreMLOptions = ORTCoreMLExecutionProviderOptions()
-            coreMLOptions.useCPUOnly = false  // Use Neural Engine
+            coreMLOptions.useCPUOnly = false  // Use GPU
             coreMLOptions.enableOnSubgraphs = true
-            coreMLOptions.onlyEnableForDevicesWithANE = false  // Allow all devices
+            coreMLOptions.onlyEnableForDevicesWithANE = false
+            coreMLOptions.requireStaticInputShapes = true  // Static shapes = less memory
+
+            // Use CPU+GPU compute units instead of Neural Engine to avoid pre-allocation
+            // This is the key fix for iPhone device vs simulator memory difference
+            try coreMLOptions.setMLComputeUnits(.cpuAndGPU)
+
             try options.appendCoreMLExecutionProvider(with: coreMLOptions)
 
             // Create session
