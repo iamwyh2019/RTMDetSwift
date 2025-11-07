@@ -242,21 +242,27 @@ private func runDetection(
             let classIndices = detections.map { Int32($0.classId) }
             let scores = detections.map { $0.confidence }
 
+            // Image boundaries for clamping
+            let maxX = Int32(originalWidth - 1)
+            let maxY = Int32(originalHeight - 1)
+
             // Boxes: [x1, y1, x2, y2] for each detection in original image space
+            // Clamp to valid image coordinates [0, width-1] and [0, height-1]
             let boxes = detections.flatMap { detection -> [Int32] in
-                let x1 = Int32(detection.bbox.x1 * finalScaleX)
-                let y1 = Int32(detection.bbox.y1 * finalScaleY)
-                let x2 = Int32(detection.bbox.x2 * finalScaleX)
-                let y2 = Int32(detection.bbox.y2 * finalScaleY)
+                let x1 = max(0, min(maxX, Int32(detection.bbox.x1 * finalScaleX)))
+                let y1 = max(0, min(maxY, Int32(detection.bbox.y1 * finalScaleY)))
+                let x2 = max(0, min(maxX, Int32(detection.bbox.x2 * finalScaleX)))
+                let y2 = max(0, min(maxY, Int32(detection.bbox.y2 * finalScaleY)))
                 return [x1, y1, x2, y2]
             }
 
             // Flatten all contour points and scale to original image space
+            // Clamp to valid image coordinates
             let contourPoints = detections.flatMap { detection -> [Int32] in
                 detection.contours.flatMap { contour -> [Int32] in
                     stride(from: 0, to: contour.count, by: 2).flatMap { i -> [Int32] in
-                        let x = Int32(contour[i] * finalScaleX)
-                        let y = Int32(contour[i + 1] * finalScaleY)
+                        let x = max(0, min(maxX, Int32(contour[i] * finalScaleX)))
+                        let y = max(0, min(maxY, Int32(contour[i + 1] * finalScaleY)))
                         return [x, y]
                     }
                 }
@@ -277,9 +283,10 @@ private func runDetection(
             }
 
             // Centroids: [x1, y1, x2, y2, ...] in original image space
+            // Clamp to valid image coordinates
             let centroids = detections.flatMap { detection -> [Int32] in
-                let x = Int32(detection.centroid.0 * finalScaleX)
-                let y = Int32(detection.centroid.1 * finalScaleY)
+                let x = max(0, min(maxX, Int32(detection.centroid.0 * finalScaleX)))
+                let y = max(0, min(maxY, Int32(detection.centroid.1 * finalScaleY)))
                 return [x, y]
             }
 

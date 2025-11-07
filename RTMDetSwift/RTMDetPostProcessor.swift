@@ -53,12 +53,6 @@ public class RTMDetPostProcessor {
             labelsShape = try labelsOutput.tensorTypeAndShapeInfo().shape
             detsShape = try detsOutput.tensorTypeAndShapeInfo().shape
             masksShape = try masksOutput.tensorTypeAndShapeInfo().shape
-
-            print("=== Model Output Shapes ===")
-            print("labels shape: \(labelsShape)")
-            print("dets shape: \(detsShape)")
-            print("masks shape: \(masksShape)")
-            print("===========================")
         } catch {
             throw NSError(domain: "RTMDetPostProcessor", code: -1,
                          userInfo: [NSLocalizedDescriptionKey: "Failed to get tensor shapes: \(error)"])
@@ -90,8 +84,6 @@ public class RTMDetPostProcessor {
             throw NSError(domain: "RTMDetPostProcessor", code: -1,
                          userInfo: [NSLocalizedDescriptionKey: "Unexpected mask shape: \(masksShape)"])
         }
-
-        print("Parsed: numDetections=\(numDetections), numMasks=\(numMasks), maskSize=\(maskSize)")
 
         // Get labels data (INT64)
         guard let labelsData = try? labelsOutput.tensorData() as Data else {
