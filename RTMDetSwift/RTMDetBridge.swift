@@ -370,18 +370,16 @@ private func processAndSendDetections(
                                     pointsPtr.baseAddress!,
                                     Int32(contourPoints.count),
                                     indicesPtr.baseAddress!,
-                                            Int32(contourIndices.count),
-                                            centroidPtr.baseAddress!,
-                                            ts
-                                        )
-                                    }
-                                }
+                                    Int32(contourIndices.count),
+                                    centroidPtr.baseAddress!,
+                                    timestamp
+                                )
                             }
                         }
                     }
                 }
             }
-        }  // autoreleasepool
+        }
     }
 }
 
