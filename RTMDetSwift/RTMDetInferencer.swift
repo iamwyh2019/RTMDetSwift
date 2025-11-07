@@ -67,10 +67,23 @@ public class RTMDetInferencer {
     }
 
     public func preprocess(image: UIImage) -> [Float]? {
-        // Resize image to model input size
-        guard let resizedImage = image.resize(to: CGSize(width: inputWidth, height: inputHeight)),
-              let cgImage = resizedImage.cgImage else {
-            print("Failed to resize image")
+        // Only resize if image is not already the correct size
+        let targetSize = CGSize(width: inputWidth, height: inputHeight)
+        let needsResize = image.size.width != targetSize.width || image.size.height != targetSize.height
+
+        let imageToProcess: UIImage
+        if needsResize {
+            guard let resized = image.resize(to: targetSize) else {
+                print("Failed to resize image")
+                return nil
+            }
+            imageToProcess = resized
+        } else {
+            imageToProcess = image
+        }
+
+        guard let cgImage = imageToProcess.cgImage else {
+            print("Failed to get CGImage")
             return nil
         }
 

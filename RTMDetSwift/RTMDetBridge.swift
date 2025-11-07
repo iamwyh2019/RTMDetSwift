@@ -27,6 +27,9 @@ private var rtmdetCallback: RTMDetCallback? = nil
 private var confidenceThreshold: Float = 0.5
 private var iouThreshold: Float = 0.5
 
+// Serial queue to prevent concurrent inference overload (memory spike prevention)
+private let inferenceQueue = DispatchQueue(label: "com.rtmdet.inference", qos: .userInitiated)
+
 // Register the callback
 @_cdecl("RegisterRTMDetCallback")
 public func RegisterRTMDetCallback(callback: @escaping RTMDetCallback) {
@@ -185,7 +188,8 @@ private func runDetection(
     scaleX: Float,
     scaleY: Float
 ) {
-    DispatchQueue.global(qos: .userInitiated).async {
+    // Use serial queue to prevent concurrent inference memory spikes
+    inferenceQueue.async {
         autoreleasepool {  // Critical: matches YOLOUnity memory management
             let ts = timestamp == 0 ? getCurrentTimestamp() : timestamp
 
