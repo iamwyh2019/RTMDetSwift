@@ -42,16 +42,6 @@ public class RTMDetInferencer {
             coreMLOptions.onlyAllowStaticInputShapes = true  // Static shapes = less memory
             coreMLOptions.createMLProgram = true  // Use MLProgram format (iOS 15+) for better memory
 
-            // Log CoreML configuration
-            print("=== CoreML EP Configuration ===")
-            print("useCPUOnly: \(coreMLOptions.useCPUOnly)")
-            print("enableOnSubgraphs: \(coreMLOptions.enableOnSubgraphs)")
-            print("onlyEnableForDevicesWithANE: \(coreMLOptions.onlyEnableForDevicesWithANE)")
-            print("onlyAllowStaticInputShapes: \(coreMLOptions.onlyAllowStaticInputShapes)")
-            print("createMLProgram: \(coreMLOptions.createMLProgram)")
-            print("Compute Units: ALL (ANE+GPU+CPU) - default when useCPUOnly=false")
-            print("===============================")
-
             try options.appendCoreMLExecutionProvider(with: coreMLOptions)
 
             // Create session
@@ -176,15 +166,12 @@ public class RTMDetInferencer {
         let outputNames = try session.outputNames()
         let outputNameSet = Set(outputNames)
 
-        // Run inference with timing - returns dictionary with output names as keys
-        let startTime = CFAbsoluteTimeGetCurrent()
+        // Run inference - returns dictionary with output names as keys
         let outputs = try session.run(
             withInputs: [inputName: inputTensor],
             outputNames: outputNameSet,
             runOptions: nil
         )
-        let inferenceTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
-        print("Inference time: \(String(format: "%.2f", inferenceTime))ms")
 
         return outputs
     }
@@ -210,6 +197,24 @@ public class RTMDetInferencer {
     ///   - confidenceThreshold: Confidence threshold for detections
     ///   - iouThreshold: IoU threshold for NMS
     /// - Returns: Array of Detection objects
+    /// Run inference directly on preprocessed float array (CHW format)
+    /// - Parameters:
+    ///   - inputData: Float array in CHW format [3, H, W], normalized to [0, 1]
+    ///   - confidenceThreshold: Confidence threshold for detections
+    ///   - iouThreshold: IoU threshold (unused, kept for compatibility)
+    /// - Returns: Array of Detection objects
+    public func detectFromFloatArray(inputData: [Float], confidenceThreshold: Float = 0.5, iouThreshold: Float = 0.5) -> [Detection]? {
+        do {
+            let outputs = try runInference(inputData: inputData)
+            let postProcessor = RTMDetPostProcessor(confidenceThreshold: confidenceThreshold, iouThreshold: iouThreshold)
+            let detections = try postProcessor.process(outputs: outputs)
+            return detections
+        } catch {
+            print("Inference or post-processing failed: \(error)")
+            return nil
+        }
+    }
+
     public func detect(image: UIImage, confidenceThreshold: Float = 0.5, iouThreshold: Float = 0.5) -> [Detection]? {
         guard let outputs = infer(image: image) else {
             return nil

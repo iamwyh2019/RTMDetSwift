@@ -118,9 +118,10 @@ public func RunRTMDet(
         return
     }
 
-    // Skip UIImage creation - convert and resize directly to save memory
+    // Optimized path: Skip UIImage creation entirely
     autoreleasepool {
-        guard let resizedFloats = resizeFloatImage(
+        // Resize directly (RGBA interleaved format)
+        guard let resizedRGBA = resizeFloatImage(
             data: imageData,
             sourceWidth: width,
             sourceHeight: height,
@@ -131,15 +132,13 @@ public func RunRTMDet(
             return
         }
 
-        // Create minimal UIImage from resized data for API compatibility
-        guard let image = floatArrayToUIImageDirect(data: resizedFloats, width: 640, height: 640) else {
-            NSLog("Error: Failed to convert resized float array to UIImage.")
-            return
-        }
+        // Convert RGBA interleaved → RGB CHW (model input format)
+        let inputCHW = convertRGBAToCHW(rgba: resizedRGBA, width: 640, height: 640)
 
-        runDetection(
+        // Run inference directly on float array (skip UIImage creation!)
+        runDetectionFromFloatArray(
             inferencer: inferencer,
-            image: image,
+            inputData: inputCHW,
             originalWidth: width,
             originalHeight: height,
             timestamp: timestamp,
@@ -164,8 +163,9 @@ public func RunRTMDet_Byte(
         return
     }
 
-    // Skip UIImage creation - convert and resize directly to save memory
+    // Optimized path: Skip UIImage creation entirely
     autoreleasepool {
+        // Resize directly (RGB bytes)
         guard let resizedBytes = resizeByteImage(
             data: imageData,
             sourceWidth: width,
@@ -177,15 +177,13 @@ public func RunRTMDet_Byte(
             return
         }
 
-        // Create minimal UIImage from resized data for API compatibility
-        guard let image = byteArrayToUIImageDirect(data: resizedBytes, width: 640, height: 640) else {
-            NSLog("Error: Failed to convert resized byte array to UIImage.")
-            return
-        }
+        // Convert bytes to normalized floats in CHW format
+        let inputCHW = convertBytesToCHW(bytes: resizedBytes, width: 640, height: 640)
 
-        runDetection(
+        // Run inference directly on float array (skip UIImage creation!)
+        runDetectionFromFloatArray(
             inferencer: inferencer,
-            image: image,
+            inputData: inputCHW,
             originalWidth: width,
             originalHeight: height,
             timestamp: timestamp,
@@ -197,6 +195,43 @@ public func RunRTMDet_Byte(
 
 // MARK: - Helper Functions
 
+/// Optimized detection path: run inference directly on preprocessed float array (skip UIImage)
+private func runDetectionFromFloatArray(
+    inferencer: RTMDetInferencer,
+    inputData: [Float],
+    originalWidth: Int,
+    originalHeight: Int,
+    timestamp: UInt64,
+    scaleX: Float,
+    scaleY: Float
+) {
+    // Use serial queue to prevent concurrent inference memory spikes
+    inferenceQueue.async {
+        autoreleasepool {  // Critical: matches YOLOUnity memory management
+            let ts = timestamp == 0 ? getCurrentTimestamp() : timestamp
+
+            guard let detections = inferencer.detectFromFloatArray(
+                inputData: inputData,
+                confidenceThreshold: RTMDetBridge.confidenceThreshold,
+                iouThreshold: RTMDetBridge.iouThreshold
+            ) else {
+                NSLog("Error: Detection failed.")
+                return
+            }
+
+            processAndSendDetections(
+                detections: detections,
+                originalWidth: originalWidth,
+                originalHeight: originalHeight,
+                timestamp: ts,
+                scaleX: scaleX,
+                scaleY: scaleY
+            )
+        }
+    }
+}
+
+/// Legacy detection path: for UIImage-based inference
 private func runDetection(
     inferencer: RTMDetInferencer,
     image: UIImage,
@@ -220,93 +255,121 @@ private func runDetection(
                 return
             }
 
-            guard let callback = rtmdetCallback else {
-                NSLog("Warning: No callback registered.")
-                return
-            }
+            processAndSendDetections(
+                detections: detections,
+                originalWidth: originalWidth,
+                originalHeight: originalHeight,
+                timestamp: ts,
+                scaleX: scaleX,
+                scaleY: scaleY
+            )
+        }
+    }
+}
 
-            // Convert detections to callback format
-            // All coordinates are in 640x640 model space, need to scale to ACTUAL original image space
-            // CRITICAL: Use the original dimensions passed from Unity, NOT image.size (which is 640x640)
-            let modelSize: Float = 640.0
+/// Common code to process detections and send to Unity callback
+private func processAndSendDetections(
+    detections: [Detection],
+    originalWidth: Int,
+    originalHeight: Int,
+    timestamp: UInt64,
+    scaleX: Float,
+    scaleY: Float
+) {
+    guard let callback = rtmdetCallback else {
+        NSLog("Warning: No callback registered.")
+        return
+    }
 
-            // Scale factors: from 640x640 model space to original image space
-            let toOriginalX = Float(originalWidth) / modelSize
-            let toOriginalY = Float(originalHeight) / modelSize
+    // Convert detections to callback format
+    // All coordinates are in 640x640 model space, need to scale to ACTUAL original image space
+    // CRITICAL: Use the original dimensions passed from Unity, NOT image.size (which is 640x640)
+    let modelSize: Float = 640.0
 
-            // Apply additional user-specified scaling
-            let finalScaleX = toOriginalX * scaleX
-            let finalScaleY = toOriginalY * scaleY
+    // Scale factors: from 640x640 model space to original image space
+    let toOriginalX = Float(originalWidth) / modelSize
+    let toOriginalY = Float(originalHeight) / modelSize
 
-            // Prepare data arrays
-            let classIndices = detections.map { Int32($0.classId) }
-            let scores = detections.map { $0.confidence }
+    // Apply additional user-specified scaling
+    let finalScaleX = toOriginalX * scaleX
+    let finalScaleY = toOriginalY * scaleY
 
-            // Boxes: [x1, y1, x2, y2] for each detection in original image space
-            let boxes = detections.flatMap { detection -> [Int32] in
-                let x1 = Int32(detection.bbox.x1 * finalScaleX)
-                let y1 = Int32(detection.bbox.y1 * finalScaleY)
-                let x2 = Int32(detection.bbox.x2 * finalScaleX)
-                let y2 = Int32(detection.bbox.y2 * finalScaleY)
-                return [x1, y1, x2, y2]
-            }
+    // Prepare data arrays
+    let classIndices = detections.map { Int32($0.classId) }
+    let scores = detections.map { $0.confidence }
 
-            // Flatten all contour points and scale to original image space
-            let contourPoints = detections.flatMap { detection -> [Int32] in
-                detection.contours.flatMap { contour -> [Int32] in
-                    stride(from: 0, to: contour.count, by: 2).flatMap { i -> [Int32] in
-                        let x = Int32(contour[i] * finalScaleX)
-                        let y = Int32(contour[i + 1] * finalScaleY)
-                        return [x, y]
-                    }
-                }
-            }
+    // Image boundaries for clamping
+    let maxX = Int32(originalWidth - 1)
+    let maxY = Int32(originalHeight - 1)
 
-            // Contour indices: [startIdx, endIdx, endIdx, ..., -1] for each detection
-            // Format: [det0_start, det0_contour1_end, det0_contour2_end, ..., -1, det1_start, ...]
-            var contourIndices: [Int32] = []
-            var currentIndex: Int32 = 0
-            for detection in detections {
-                contourIndices.append(currentIndex)
-                for contour in detection.contours {
-                    let pointCount = Int32(contour.count / 2)  // x,y pairs
-                    currentIndex += pointCount
-                    contourIndices.append(currentIndex)
-                }
-                contourIndices.append(-1)  // Separator between detections
-            }
+    // Boxes: [x1, y1, x2, y2] for each detection in original image space
+    // Clamp to valid image coordinates [0, width-1] and [0, height-1]
+    let boxes = detections.flatMap { detection -> [Int32] in
+        let x1 = max(0, min(maxX, Int32(detection.bbox.x1 * finalScaleX)))
+        let y1 = max(0, min(maxY, Int32(detection.bbox.y1 * finalScaleY)))
+        let x2 = max(0, min(maxX, Int32(detection.bbox.x2 * finalScaleX)))
+        let y2 = max(0, min(maxY, Int32(detection.bbox.y2 * finalScaleY)))
+        return [x1, y1, x2, y2]
+    }
 
-            // Centroids: [x1, y1, x2, y2, ...] in original image space
-            let centroids = detections.flatMap { detection -> [Int32] in
-                let x = Int32(detection.centroid.0 * finalScaleX)
-                let y = Int32(detection.centroid.1 * finalScaleY)
+    // Flatten all contour points and scale to original image space
+    // Clamp to valid image coordinates
+    let contourPoints = detections.flatMap { detection -> [Int32] in
+        detection.contours.flatMap { contour -> [Int32] in
+            stride(from: 0, to: contour.count, by: 2).flatMap { i -> [Int32] in
+                let x = max(0, min(maxX, Int32(contour[i] * finalScaleX)))
+                let y = max(0, min(maxY, Int32(contour[i + 1] * finalScaleY)))
                 return [x, y]
             }
+        }
+    }
 
-            // Empty name data for Unity signature compatibility
-            // RTMDet returns class IDs only - Unity should use a lookup table for names
-            let emptyNames: [UInt8] = []
+    // Contour indices: [startIdx, endIdx, endIdx, ..., -1] for each detection
+    // Format: [det0_start, det0_contour1_end, det0_contour2_end, ..., -1, det1_start, ...]
+    var contourIndices: [Int32] = []
+    var currentIndex: Int32 = 0
+    for detection in detections {
+        contourIndices.append(currentIndex)
+        for contour in detection.contours {
+            let pointCount = Int32(contour.count / 2)  // x,y pairs
+            currentIndex += pointCount
+            contourIndices.append(currentIndex)
+        }
+        contourIndices.append(-1)  // Separator between detections
+    }
 
-            // Call the callback with all the data
-            classIndices.withUnsafeBufferPointer { classPtr in
-                emptyNames.withUnsafeBufferPointer { namesPtr in
-                    scores.withUnsafeBufferPointer { scoresPtr in
-                        boxes.withUnsafeBufferPointer { boxesPtr in
-                            contourPoints.withUnsafeBufferPointer { pointsPtr in
-                                contourIndices.withUnsafeBufferPointer { indicesPtr in
-                                    centroids.withUnsafeBufferPointer { centroidPtr in
-                                        // Pass empty pointer for names to maintain Unity compatibility
-                                        let namesPointer = namesPtr.baseAddress ?? UnsafePointer<UInt8>(bitPattern: 1)!
-                                        callback(
-                                            Int32(detections.count),
-                                            classPtr.baseAddress!,
-                                            namesPointer,
-                                            Int32(0),  // names length = 0
-                                            scoresPtr.baseAddress!,
-                                            boxesPtr.baseAddress!,
-                                            pointsPtr.baseAddress!,
-                                            Int32(contourPoints.count),
-                                            indicesPtr.baseAddress!,
+    // Centroids: [x1, y1, x2, y2, ...] in original image space
+    // Clamp to valid image coordinates
+    let centroids = detections.flatMap { detection -> [Int32] in
+        let x = max(0, min(maxX, Int32(detection.centroid.0 * finalScaleX)))
+        let y = max(0, min(maxY, Int32(detection.centroid.1 * finalScaleY)))
+        return [x, y]
+    }
+
+    // Empty name data for Unity signature compatibility
+    // RTMDet returns class IDs only - Unity should use a lookup table for names
+    let emptyNames: [UInt8] = []
+
+    // Call the callback with all the data
+    classIndices.withUnsafeBufferPointer { classPtr in
+        emptyNames.withUnsafeBufferPointer { namesPtr in
+            scores.withUnsafeBufferPointer { scoresPtr in
+                boxes.withUnsafeBufferPointer { boxesPtr in
+                    contourPoints.withUnsafeBufferPointer { pointsPtr in
+                        contourIndices.withUnsafeBufferPointer { indicesPtr in
+                            centroids.withUnsafeBufferPointer { centroidPtr in
+                                // Pass empty pointer for names to maintain Unity compatibility
+                                let namesPointer = namesPtr.baseAddress ?? UnsafePointer<UInt8>(bitPattern: 1)!
+                                callback(
+                                    Int32(detections.count),
+                                    classPtr.baseAddress!,
+                                    namesPointer,
+                                    Int32(0),  // names length = 0
+                                    scoresPtr.baseAddress!,
+                                    boxesPtr.baseAddress!,
+                                    pointsPtr.baseAddress!,
+                                    Int32(contourPoints.count),
+                                    indicesPtr.baseAddress!,
                                             Int32(contourIndices.count),
                                             centroidPtr.baseAddress!,
                                             ts
@@ -412,6 +475,61 @@ private func getCurrentTimestamp() -> UInt64 {
 }
 
 // MARK: - Memory-Optimized Image Conversion
+
+/// Convert RGBA interleaved float array to RGB CHW (planar) format for model input
+/// Input: [R0, G0, B0, A0, R1, G1, B1, A1, ...] - RGBA interleaved
+/// Output: [R0, R1, R2, ..., G0, G1, G2, ..., B0, B1, B2, ...] - RGB planar (CHW)
+private func convertRGBAToCHW(rgba: [Float], width: Int, height: Int) -> [Float] {
+    let pixelCount = width * height
+    var chw = [Float](repeating: 0, count: 3 * pixelCount)
+
+    // Parallel conversion for performance
+    DispatchQueue.concurrentPerform(iterations: height) { y in
+        for x in 0..<width {
+            let pixelIndex = y * width + x
+            let rgbaIndex = pixelIndex * 4
+
+            // R channel
+            chw[pixelIndex] = rgba[rgbaIndex]
+            // G channel
+            chw[pixelCount + pixelIndex] = rgba[rgbaIndex + 1]
+            // B channel
+            chw[2 * pixelCount + pixelIndex] = rgba[rgbaIndex + 2]
+            // Skip alpha channel
+        }
+    }
+
+    return chw
+}
+
+/// Convert BGRA byte array to RGB CHW float array (normalized to [0, 1])
+/// Input: [B0, G0, R0, A0, B1, G1, R1, A1, ...] - BGRA bytes [0-255] from Unity shader
+/// Output: [R0, R1, R2, ..., G0, G1, G2, ..., B0, B1, B2, ...] - RGB planar floats [0-1]
+private func convertBytesToCHW(bytes: [UInt8], width: Int, height: Int) -> [Float] {
+    let pixelCount = width * height
+    var chw = [Float](repeating: 0, count: 3 * pixelCount)
+
+    // Parallel conversion with normalization
+    DispatchQueue.concurrentPerform(iterations: height) { y in
+        for x in 0..<width {
+            let pixelIndex = y * width + x
+            let bgraIndex = pixelIndex * 4  // Unity sends BGRA (4 channels)
+
+            // Read BGRA and output as RGB CHW, normalized [0, 255] → [0, 1]
+            let b = Float(bytes[bgraIndex + 0]) / 255.0
+            let g = Float(bytes[bgraIndex + 1]) / 255.0
+            let r = Float(bytes[bgraIndex + 2]) / 255.0
+            // Skip alpha channel (bgraIndex + 3)
+
+            // Write to CHW format (RGB planar)
+            chw[pixelIndex] = r  // R channel
+            chw[pixelCount + pixelIndex] = g  // G channel
+            chw[2 * pixelCount + pixelIndex] = b  // B channel
+        }
+    }
+
+    return chw
+}
 
 /// Resize float image data directly without creating intermediate UIImages
 /// This saves significant memory by avoiding large UIImage allocations
