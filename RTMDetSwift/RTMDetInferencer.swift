@@ -26,11 +26,36 @@ public class RTMDetInferencer {
             // Create session options
             let options = try ORTSessionOptions()
 
-            // Enable CoreML for Neural Engine acceleration
+            // CRITICAL: Disable CPU memory arena to prevent memory buildup
+            // Memory arena pre-allocates and never returns memory to system
+            // This alone can save GBs of memory during continuous inference
+            try options.setEnableCPUMemArena(false)
+            try options.setEnableMemPattern(false)
+
+            // Use basic graph optimization for best CoreML compatibility
+            try options.setGraphOptimizationLevel(.basic)
+
+            // Enable CoreML with Neural Engine
             let coreMLOptions = ORTCoreMLExecutionProviderOptions()
-            coreMLOptions.useCPUOnly = false  // Use Neural Engine
+            coreMLOptions.useCPUOnly = false
             coreMLOptions.enableOnSubgraphs = true
-            coreMLOptions.onlyEnableForDevicesWithANE = false  // Allow all devices
+            coreMLOptions.onlyEnableForDevicesWithANE = false
+            coreMLOptions.requireStaticInputShapes = true  // Static shapes = less memory
+
+            // Enable model caching to reduce initialization memory overhead
+            // Cache converted CoreML models to avoid re-conversion
+            let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("com.rtmdet.coreml")
+            try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+            coreMLOptions.coreMLModelCacheDirectory = cacheDir.path
+
+            // Use MLProgram format (iOS 15+) - newer format with better memory characteristics
+            coreMLOptions.coreMLModelFormat = .mlProgram
+
+            // Keep Neural Engine enabled (default compute units = all available)
+            // If this still causes crashes, we can fall back to .cpuAndGPU
+            // try coreMLOptions.setMLComputeUnits(.all)  // Default is all
+
             try options.appendCoreMLExecutionProvider(with: coreMLOptions)
 
             // Create session
